@@ -1,0 +1,8 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Opcional: estilo global del body */
+body {
+  @apply bg-lime-100 font-sans;
+}
