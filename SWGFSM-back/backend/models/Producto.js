@@ -1,3 +1,5 @@
+// backend/models/Producto.js
+
 const mongoose = require('mongoose');
 
 const productoSchema = new mongoose.Schema({
@@ -27,7 +29,7 @@ const productoSchema = new mongoose.Schema({
   },
   stockSemanal: { 
     type: Number, 
-    required: true // Este sería tu stock actual
+    required: true 
   },
   descripcion: { 
     type: String, 
@@ -43,4 +45,5 @@ const productoSchema = new mongoose.Schema({
   }
 });
 
-module.exports = mongoose.model('Producto', productoSchema);
+// Asegurar que la colección se llame 'productos' (en minúsculas)
+module.exports = mongoose.model('Producto', productoSchema, 'producto');

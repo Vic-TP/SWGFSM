@@ -1,3 +1,4 @@
+// backend/routes/inventarioRoutes.js
 const express = require('express');
 const Inventario = require('../models/Inventario');
 
