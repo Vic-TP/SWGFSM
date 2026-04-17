@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import Prediccion from "../predict/Prediccion";
 import ProveedoresTable from "./ProveedoresTable";
 
 
@@ -240,7 +241,18 @@ const AdminDashboard = () => {
   // Clases CSS para el menú lateral
   const menuBtnClasses = (section) => `w-full flex items-center gap-3 px-4 py-2 rounded-lg transition ${selectedSection === section ? "bg-emerald-800 text-lime-50" : "hover:bg-emerald-800/70"}`;
   
-  const getHeaderTitle = () => selectedSection.charAt(0).toUpperCase() + selectedSection.slice(1);
+  const getHeaderTitle = () => {
+  const titles = {
+    dashboard: "Dashboard",
+    usuarios: "Usuarios",
+    productos: "Productos",
+    inventario: "Inventario",
+    proveedores: "Proveedores",
+    ventas: "Ventas",
+    prediccion: "Predicción",
+  };
+  return titles[selectedSection] || selectedSection;
+};
 
   // Función que decide qué mostrar en la pantalla principal
   const renderContent = () => {
@@ -673,6 +685,30 @@ const AdminDashboard = () => {
       );
     }
 
+    // --- SECCIÓN PREDICCIÓN ---
+    if (selectedSection === "prediccion") {
+       return <Prediccion />;
+      // return (
+      //   <section className="flex-1 p-8">
+      //     <div className="bg-lime-50 rounded-3xl shadow-lg shadow-lime-900/10 border border-lime-200 p-8">
+      //       <h2 className="text-sm font-semibold text-emerald-900 mb-4">
+      //         Predicción de demanda
+      //       </h2>
+      //       <p className="text-sm text-emerald-900/80">
+      //         Aquí podrás visualizar predicciones de ventas y demanda de productos
+      //         basadas en datos históricos. Esta sección permitirá anticipar
+      //         necesidades de stock y mejorar la toma de decisiones.
+      //       </p>
+
+      //       {/* Aquí luego puedes poner gráficos o resultados de tu modelo */}
+      //       <div className="mt-6 p-4 bg-white rounded-2xl border border-lime-200 text-sm text-gray-500 text-center">
+      //         (Próximamente: gráficos de predicción, análisis y recomendaciones)
+      //       </div>
+      //     </div>
+      //   </section>
+      // );
+    }
+
     // --- SECCIÓN VENTAS (RESTAURADA COMPLETA) ---
     if (selectedSection === "ventas") {
       return (
@@ -843,7 +879,7 @@ const AdminDashboard = () => {
 
     return null;
   };
-
+  
   // ==========================================
   // 6. RENDER PRINCIPAL (LAYOUT)
   // ==========================================
@@ -857,7 +893,7 @@ const AdminDashboard = () => {
         </div>
         
         <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
-          {["dashboard", "usuarios", "productos", "inventario", "proveedores", "ventas"].map((sec) => (
+          {["dashboard", "usuarios", "productos", "inventario", "proveedores", "ventas", "prediccion"].map((sec) => (
             <button key={sec} className={menuBtnClasses(sec)} onClick={() => {
                 setSelectedSection(sec);
                 // Si cambiamos de sección, reseteamos el modo nueva venta
