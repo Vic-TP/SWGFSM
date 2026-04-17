@@ -20,7 +20,8 @@ mongoose.connect(mongoURI)
 
 // RUTAS - IMPORTANTE: el orden importa
 const productoRoutes = require('./routes/productoRoutes');
-const inventarioRoutes = require('./routes/inventarioRoutes');
+const inventarioRoutes = require('./routes/InventarioRoutes');
+const ventasRoutes = require('./routes/ventasRoutes');
 
 // Las rutas DEBEN ser así:
 app.use('/api/producto', productoRoutes);

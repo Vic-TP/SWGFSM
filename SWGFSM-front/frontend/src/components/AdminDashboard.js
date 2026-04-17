@@ -1,10 +1,9 @@
-// src/components/AdminDashboard.js - VERSIÓN CORREGIDA
 
 import React, { useState, useEffect } from "react";
-import Prediccion from "../predict/Prediccion";
 import ProveedoresTable from "./ProveedoresTable";
 import VentasAdmin from "./VentasAdmin";
 import CajaRegistradora from "./CajaRegistradora";
+import Prediccion from "../predict/Prediccion";
 
 const API_URL_PRODUCTOS  = "http://localhost:5000/api/producto";
 const API_URL_INVENTARIO = "http://localhost:5000/api/inventario";
@@ -131,22 +130,27 @@ const AdminDashboard = () => {
     } catch { alert("No se pudo conectar con el servidor."); }
   };
 
-  // ==========================================
-  // 5. RENDER Y UI (VISUALIZACIÓN)
-  // ==========================================
-  const handleBack = () => {
-    if (window.opener) window.close();
-    else window.history.back();
-  };
-  
-  const handleLogout = () => window.location.href = "/";
-  
-  // Clases CSS para el menú lateral
-  const menuBtnClasses = (section) => `w-full flex items-center gap-3 px-4 py-2 rounded-lg transition ${selectedSection === section ? "bg-emerald-800 text-lime-50" : "hover:bg-emerald-800/70"}`;
-  
-  const getHeaderTitle = () => selectedSection.charAt(0).toUpperCase() + selectedSection.slice(1);
+  const handleBack   = () => { if (window.opener) window.close(); else window.history.back(); };
+  const confirmLogout = () => { window.location.href = "/"; };
 
-  // Función que decide qué mostrar en la pantalla principal
+  const menuBtnClasses = (s) =>
+    `w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition ${
+      selectedSection === s ? "bg-emerald-700 text-lime-50" : "text-emerald-100 hover:bg-emerald-800/60"
+    }`;
+
+  const sectionLabels = {
+    dashboard: "Dashboard",
+    caja: "Caja Registradora",
+    usuarios: "Usuarios",
+    productos: "Productos",
+    inventario: "Inventario",
+    proveedores: "Proveedores",
+    ventas: "Ventas",
+    prediction: "Predicción",
+  };
+
+  const inp = "w-full border border-gray-200 p-2.5 rounded-xl text-sm outline-none focus:ring-2 focus:ring-emerald-400";
+
   const renderContent = () => {
 
     /* DASHBOARD */
@@ -177,28 +181,11 @@ const AdminDashboard = () => {
       return <CajaRegistradora />;
     }
 
-    /* ANÁLISIS ML */
-    if (selectedSection === "ml") return (
-      <section className="flex-1 p-8 space-y-6">
-        <div className="bg-white border border-lime-200 rounded-3xl p-8">
-          <h2 className="text-lg font-bold text-emerald-900 mb-1">Análisis Inteligente (ML)</h2>
-          <p className="text-sm text-gray-400 mb-6">Predicciones de demanda y tendencias de ventas basadas en tu historial.</p>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {[
-              { title: "Demanda estimada", desc: "Predicción de ventas para la próxima semana basada en datos históricos.", badge: "Próximamente" },
-              { title: "Producto más vendido", desc: "Identificación automática de tu producto estrella por temporada.", badge: "Próximamente" },
-              { title: "Alerta de stock", desc: "Aviso inteligente cuando el stock proyectado es insuficiente para la demanda.", badge: "Próximamente" },
-            ].map(({ title, desc, badge }) => (
-              <div key={title} className="bg-lime-50 border border-lime-200 rounded-2xl p-5">
-                <span className="text-xs bg-emerald-100 text-emerald-800 font-semibold px-3 py-0.5 rounded-full">{badge}</span>
-                <h3 className="font-bold text-emerald-900 mt-3 mb-1 text-sm">{title}</h3>
-                <p className="text-xs text-gray-500">{desc}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-    );
+    /* PREDICCION */
+     if (selectedSection === "prediction") {
+       return <Prediccion />;
+    }
+    
 
     /* USUARIOS */
     if (selectedSection === "usuarios") return (
@@ -419,24 +406,10 @@ const AdminDashboard = () => {
       </section>
     );
 
-    // --- SECCIÓN PROVEEDORES (RESTAURADA) ---
-    if (selectedSection === "proveedores") {
-      return (
-        <section className="flex-1 p-8">
-          <div className="bg-lime-50 rounded-3xl shadow-lg shadow-lime-900/10 border border-lime-200 p-8">
-            <h2 className="text-sm font-semibold text-emerald-900 mb-4">
-              Proveedores
-            </h2>
-            <p className="text-sm text-emerald-900/80">
-              Aquí podrás registrar y gestionar tus proveedores de palta
-              (contacto, número de puesto, condiciones de pago, etc.).
-            </p>
-          </div>
-        </section>
-      );
-    }
+    /* PROVEEDORES */
+    if (selectedSection === "proveedores") return <ProveedoresTable />;
 
-    // --- SECCIÓN VENTAS (RESTAURADA COMPLETA) ---
+    /* VENTAS */
     if (selectedSection === "ventas") {
       return <VentasAdmin />;
     }
@@ -444,9 +417,6 @@ const AdminDashboard = () => {
     return null;
   };
 
-  // ==========================================
-  // 6. RENDER PRINCIPAL (LAYOUT)
-  // ==========================================
   return (
     <div className="min-h-screen flex bg-lime-100 font-sans">
       <aside className="w-64 bg-emerald-950 text-lime-50 flex flex-col shadow-2xl z-10 flex-shrink-0">
@@ -454,15 +424,15 @@ const AdminDashboard = () => {
           <p className="text-xs text-emerald-400 uppercase tracking-widest mb-1">Panel Admin</p>
           <h1 className="text-base font-bold leading-tight">Frutería Señor de Muruhuay</h1>
         </div>
-        
-        <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
-          {["dashboard", "usuarios", "productos", "inventario", "proveedores", "ventas"].map((sec) => (
-            <button key={sec} className={menuBtnClasses(sec)} onClick={() => {
-                setSelectedSection(sec);
-                // Si cambiamos de sección, reseteamos el modo nueva venta
-                setModoNuevaVenta(false);
-            }}>
-              {sec.charAt(0).toUpperCase() + sec.slice(1)}
+
+        <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
+          {Object.entries(sectionLabels).map(([sec, label]) => (
+            <button
+              key={sec}
+              className={menuBtnClasses(sec)}
+              onClick={() => { setSelectedSection(sec); setModoNuevaVenta(false); }}
+            >
+              {label}
             </button>
           ))}
         </nav>
