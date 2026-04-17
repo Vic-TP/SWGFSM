@@ -33,7 +33,7 @@ mongoose.connect(mongoURI)
 
 // --- RUTAS ---
 const productoRoutes = require('./routes/productoRoutes');
-const inventarioRoutes = require('./routes/inventarioRoutes');
+const inventarioRoutes = require('./routes/InventarioRoutes');
 
 app.use('/api/productos', productoRoutes);
 app.use('/api/inventario', inventarioRoutes);
