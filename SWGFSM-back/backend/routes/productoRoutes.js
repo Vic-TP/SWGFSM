@@ -1,98 +1,77 @@
+// backend/routes/productoRoutes.js - VERSIÓN CORREGIDA
+
 const express = require('express');
 const Producto = require('../models/Producto');
 
 const router = express.Router();
 
-// ==========================================
 // OBTENER TODOS LOS PRODUCTOS (GET)
-// ==========================================
-router.get('/productos', async (req, res) => {
+router.get('/', async (req, res) => {
   try {
     const productos = await Producto.find();
+    console.log(`✅ Se encontraron ${productos.length} producto`); // Para debug
     res.json(productos);
   } catch (err) {
-    console.error(err);
-    res.status(500).send('Error al obtener los productos');
+    console.error('Error en GET /producto:', err);
+    res.status(500).json({ message: 'Error al obtener los producto', error: err.message });
   }
 });
 
-// ==========================================
-// CREAR UN NUEVO PRODUCTO (POST)
-// ==========================================
-// Nota: Cambiado a plural '/productos' para coincidir con el frontend
-router.post('/productos', async (req, res) => {
+// OBTENER UN PRODUCTO POR ID
+router.get('/:id', async (req, res) => {
   try {
-    // Extraemos todos los campos que envía el formulario de React
-    const { 
-      nombre, 
-      categoriaId, 
-      unidadMedida, 
-      precioCompra, 
-      precioVenta, 
-      stockMinimo, 
-      stockSemanal, 
-      descripcion, 
-      estado 
-    } = req.body;
+    const producto = await Producto.findById(req.params.id);
+    if (!producto) {
+      return res.status(404).json({ message: 'Producto no encontrado' });
+    }
+    res.json(producto);
+  } catch (err) {
+    console.error('Error en GET /producto/:id:', err);
+    res.status(500).json({ message: 'Error al obtener el producto' });
+  }
+});
 
-    const nuevoProducto = new Producto({
-      nombre,
-      categoriaId,
-      unidadMedida,
-      precioCompra,
-      precioVenta,
-      stockMinimo,
-      stockSemanal,
-      descripcion,
-      estado
-    });
-
+// CREAR PRODUCTO (POST)
+router.post('/', async (req, res) => {
+  try {
+    const nuevoProducto = new Producto(req.body);
     const productoGuardado = await nuevoProducto.save();
     res.status(201).json(productoGuardado);
   } catch (err) {
-    console.error(err);
-    res.status(500).send('Error al agregar el producto');
+    console.error('Error en POST /producto:', err);
+    res.status(500).json({ message: 'Error al crear el producto' });
   }
 });
 
-// ==========================================
-// EDITAR UN PRODUCTO (PUT)
-// ==========================================
-router.put('/productos/:id', async (req, res) => {
+// ACTUALIZAR PRODUCTO (PUT)
+router.put('/:id', async (req, res) => {
   try {
-    const { id } = req.params;
-    const datosActualizados = req.body;
-
-    // findByIdAndUpdate devuelve el documento anterior por defecto, 
-    // { new: true } hace que devuelva el actualizado.
     const productoActualizado = await Producto.findByIdAndUpdate(
-      id, 
-      datosActualizados, 
-      { new: true } 
+      req.params.id,
+      req.body,
+      { new: true }
     );
-
     if (!productoActualizado) {
       return res.status(404).json({ message: 'Producto no encontrado' });
     }
-
     res.json(productoActualizado);
   } catch (err) {
-    console.error(err);
-    res.status(500).send('Error al actualizar el producto');
+    console.error('Error en PUT /productos/:id:', err);
+    res.status(500).json({ message: 'Error al actualizar el producto' });
   }
 });
 
-// ==========================================
-// ELIMINAR UN PRODUCTO (DELETE)
-// ==========================================
-router.delete('/productos/:id', async (req, res) => {
+// ELIMINAR PRODUCTO (DELETE)
+router.delete('/:id', async (req, res) => {
   try {
-    const { id } = req.params;
-    await Producto.findByIdAndDelete(id);
+    const productoEliminado = await Producto.findByIdAndDelete(req.params.id);
+    if (!productoEliminado) {
+      return res.status(404).json({ message: 'Producto no encontrado' });
+    }
     res.json({ message: 'Producto eliminado correctamente' });
   } catch (err) {
-    console.error(err);
-    res.status(500).send('Error al eliminar el producto');
+    console.error('Error en DELETE /productos/:id:', err);
+    res.status(500).json({ message: 'Error al eliminar el producto' });
   }
 });
 

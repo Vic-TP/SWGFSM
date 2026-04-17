@@ -1,4 +1,5 @@
-// src/components/Footer.js
+// src/components/Footer.js - VERSIÓN SIN EMOJIS
+
 import React from "react";
 
 const Footer = () => {
@@ -11,32 +12,29 @@ const Footer = () => {
             Contacto para realizar Pedidos:
           </p>
           <p>celular:</p>
-          <p className="mt-2">📱 966142980</p>
-          <p>📱 988 133 254</p>
+          <p className="mt-2">966 142 980</p>
+          <p>988 133 254</p>
         </div>
 
         {/* Columna Dirección */}
-<div className="text-left">
-  <h3 className="font-bold text-lg text-emerald-900 mb-2">
-    Dirección:
-  </h3>
-
-  <a
-    href="https://maps.app.goo.gl/g1d1cjpqv94DjvpQ6"
-    target="_blank"
-    rel="noopener noreferrer"
-    className="font-mono text-emerald-900 underline hover:text-emerald-700"
-  >
-    Av. Mercado Caqueta N°<br />
-    800, RIMAC
-  </a>
-</div>
+        <div className="text-left">
+          <h3 className="font-bold text-lg text-emerald-900 mb-2">
+            Dirección:
+          </h3>
+          <a
+            href="https://maps.app.goo.gl/g1d1cjpqv94DjvpQ6"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-mono text-emerald-900 underline hover:text-emerald-700"
+          >
+            Av. Mercado Caqueta N° 800, RIMAC
+          </a>
+        </div>
 
         {/* Columna 3: Sobre Nosotros */}
         <div>
           <p className="font-semibold text-lg">Sobre Nosotros:</p>
-          <p> Comercializadora de Frutas Señor de Muruhuay se dedica a la venta y distribución de paltas a mercados locales y mayoristas 🥑. Ofrecemos paltas de alta calidad, cuidadosamente seleccionadas, en variedades como Hass, Fuerte y paltas de la selva, adaptándonos a la temporada y a las preferencias del mercado.  </p>
-          <p>     </p>
+          <p>Comercializadora de Frutas Señor de Muruhuay se dedica a la venta y distribución de paltas a mercados locales y mayoristas. Ofrecemos paltas de alta calidad, cuidadosamente seleccionadas, en variedades como Hass, Fuerte y paltas de la selva, adaptándonos a la temporada y a las preferencias del mercado.</p>
         </div>
       </div>
     </footer>

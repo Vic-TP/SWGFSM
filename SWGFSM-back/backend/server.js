@@ -1,3 +1,5 @@
+// backend/server.js - COMPLETO CORREGIDO
+
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
@@ -5,41 +7,32 @@ require('dotenv').config();
 
 const app = express();
 
-// --- MIDDLEWARES ---
-app.use(express.json()); 
+// Middlewares
+app.use(express.json());
 app.use(cors());
 
-// --- CONFIGURACIÓN DE MONGODB ATLAS ---
+// Configuración MongoDB
 const mongoURI = process.env.MONGO_URI;
 
-// Debug opcional: Descomenta la siguiente línea si vuelve a fallar para ver qué lee el sistema
-// console.log("Intentando conectar a:", mongoURI);
-
 mongoose.connect(mongoURI)
-  .then(() => {
-    console.log(' Conectado exitosamente a MongoDB Atlas');
-    console.log(' Base de Datos activa:', mongoose.connection.name);
-  })
-  .catch((err) => {
-    console.error(' Error crítico de conexión:');
-    if (err.message.includes('Authentication failed')) {
-      console.error(' CAUSA: Usuario o contraseña incorrectos en el .env');
-    } else if (err.message.includes('ETIMEDOUT')) {
-      console.error(' CAUSA: Tu IP no tiene permiso en Atlas (Network Access)');
-    } else {
-      console.error(' DETALLE:', err.message);
-    }
-  });
+  .then(() => console.log('Conectado exitosamente a MongoDB Atlas'))
+  .catch((err) => console.error('Error de conexión:', err));
 
-// --- RUTAS ---
+// RUTAS - IMPORTANTE: el orden importa
 const productoRoutes = require('./routes/productoRoutes');
-const inventarioRoutes = require('./routes/InventarioRoutes');
+const inventarioRoutes = require('./routes/inventarioRoutes');
 
-app.use('/api/productos', productoRoutes);
+// Las rutas DEBEN ser así:
+app.use('/api/producto', productoRoutes);
 app.use('/api/inventario', inventarioRoutes);
+app.use('/api/ventas', ventasRoutes); // si ya lo tienes
 
-// --- INICIO DEL SERVIDOR ---
+// Ruta de prueba para verificar que el backend funciona
+app.get('/api/test', (req, res) => {
+  res.json({ message: 'Backend funcionando correctamente' });
+});
+
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
-  console.log(` Servidor corriendo en: http://localhost:${5000}`);
+  console.log(`Servidor corriendo en: http://localhost:${PORT}`);
 });
