@@ -2,48 +2,50 @@
 
 const mongoose = require('mongoose');
 
-const productoSchema = new mongoose.Schema({
-  nombre: { 
-    type: String, 
-    required: true 
-  },
-  categoriaId: { 
-    type: String, 
-    required: false 
-  },
-  unidadMedida: { 
-    type: String, 
-    required: false 
-  },
-  precioCompra: { 
-    type: Number, 
-    required: true 
-  },
-  precioVenta: { 
-    type: Number, 
-    required: true 
-  },
-  stockMinimo: { 
-    type: Number, 
-    default: 0 
-  },
-  stockSemanal: { 
-    type: Number, 
-    required: true 
-  },
-  descripcion: { 
-    type: String, 
-    required: false 
-  },
-  estado: { 
-    type: String, 
-    default: 'ACTIVO' 
-  },
-  fechaCreacion: {
-    type: Date,
-    default: Date.now
-  }
-});
+const productoSchema = new mongoose.Schema(
+  {
+    nombre: {
+      type: String,
+      required: true,
+      trim: true
+    },
+    /** Antes "categoría"; en UI: Tipo */
+    tipo: {
+      type: String,
+      required: false,
+      trim: true,
+      default: ''
+    },
+    unidadMedida: {
+      type: String,
+      required: false,
+      trim: true,
+      default: 'kg'
+    },
+    precioVenta: {
+      type: Number,
+      required: true,
+      min: 0
+    },
+    stockPaltaMadura: { type: Number, default: 0, min: 0 },
+    stockPaltaVerde: { type: Number, default: 0, min: 0 },
+    stockPaltaSazon: { type: Number, default: 0, min: 0 },
+    detalle: { type: String, required: false, trim: true, default: '' },
+    tamano: { type: String, required: false, trim: true, default: '' },
+    descripcion: { type: String, required: false, trim: true, default: '' },
+    estado: { type: String, default: 'ACTIVO' },
+    fechaCreacion: { type: Date, default: Date.now },
 
-// Asegurar que la colección se llame 'productos' (en minúsculas)
-module.exports = mongoose.model('Producto', productoSchema, 'producto');
+    // --- Legacy (documentos antiguos en Atlas) ---
+    categoriaId: { type: String, required: false },
+    precioCompra: { type: Number, required: false },
+    stockMinimo: { type: Number, required: false },
+    stockSemanal: { type: Number, required: false }
+  },
+  {
+    collection: 'producto',
+    strict: true
+  }
+);
+
+module.exports = mongoose.model('Producto', productoSchema);

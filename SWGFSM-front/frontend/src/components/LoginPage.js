@@ -1,6 +1,24 @@
 // src/components/LoginPage.js - CORREGIDO
 
 import React, { useState } from "react";  // ← Eliminado useEffect
+import PasswordInput from "./PasswordInput";
+
+const API_URL_CLIENTES = "http://localhost:5000/api/clientes";
+
+/** Respuesta del API (nombres/correo) → forma usada en el front (nombre/email) */
+const mapServerCliente = (doc) => {
+  if (!doc) return null;
+  return {
+    _id: doc._id,
+    nombre: doc.nombres,
+    apellidos: doc.apellidos || "",
+    email: doc.correo,
+    telefono: doc.telefono || "",
+    documento: doc.documento || "",
+    tipoCliente: doc.tipoCliente,
+    estado: doc.estado,
+  };
+};
 
 const LoginPage = () => {
   const [isRegister, setIsRegister] = useState(false);
@@ -23,12 +41,11 @@ const LoginPage = () => {
   // Detectar si es admin por el correo
   const isAdminEmail = (emailStr) => emailStr.endsWith("@muruhuay.com");
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
-    // ===================== REGISTRO (solo clientes) =====================
+    // ===================== REGISTRO (solo clientes) → MongoDB =====================
     if (isRegister) {
-      // Los que se registran NUNCA pueden ser admin
       if (isAdminEmail(regEmail)) {
         alert("No puedes registrarte con un correo @muruhuay.com. Este dominio es solo para administradores.");
         return;
@@ -39,47 +56,82 @@ const LoginPage = () => {
         return;
       }
 
-      const nuevoCliente = {
-        nombre: regNombre,
-        apellidos: regApellidos,
-        email: regEmail,
-        telefono: regTelefono,
-        password: regPassword,
-      };
-
-      localStorage.setItem("cliente_actual", JSON.stringify(nuevoCliente));
-      localStorage.setItem("cliente_logueado", "true");
-
-      alert(`Cuenta de cliente creada para ${nuevoCliente.nombre}.`);
-      window.location.href = "/cliente/perfil";
+      try {
+        const res = await fetch(API_URL_CLIENTES, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            nombres: regNombre,
+            apellidos: regApellidos,
+            correo: regEmail,
+            telefono: regTelefono,
+            password: regPassword,
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          alert(data.message || "No se pudo crear la cuenta.");
+          return;
+        }
+        const clienteFront = mapServerCliente(data);
+        localStorage.setItem("cliente_actual", JSON.stringify(clienteFront));
+        localStorage.setItem("cliente_logueado", "true");
+        alert(`Cuenta creada para ${clienteFront.nombre}. Tus datos quedaron guardados en el servidor.`);
+        window.location.href = "/cliente/perfil";
+      } catch (err) {
+        console.error(err);
+        alert("No se pudo conectar con el servidor. ¿Está el backend en marcha?");
+      }
       return;
     }
 
     // ===================== LOGIN (deteccion automatica) =====================
     if (isAdminEmail(email)) {
-      // ---------- LOGIN ADMIN (por correo @muruhuay.com) ----------
       const admin = fakeAdmins.find((u) => u.email === email && u.password === password);
       if (!admin) {
         alert("Correo o contrasena de administrador incorrectos.");
         return;
       }
+      localStorage.setItem("trabajador_logueado", "true");
+      localStorage.setItem(
+        "trabajador_actual",
+        JSON.stringify({
+          nombres: admin.nombre,
+          apellidos: "",
+          correo: admin.email,
+          rol: "Administrador de almacén",
+          estado: "ACTIVO",
+          _id: "legacy-muruhuay",
+        })
+      );
       alert(`Bienvenida ${admin.nombre}, acceso de administrador concedido.`);
       window.location.href = "/admin-dashboard";
-    } else {
-      // ---------- LOGIN CLIENTE NORMAL ----------
-      const stored = localStorage.getItem("cliente_actual");
-      if (!stored) {
-        alert("No hay ningun cliente registrado con ese correo. Registrate primero.");
+      return;
+    }
+
+    // ---------- LOGIN CLIENTE (MongoDB) ----------
+    try {
+      const res = await fetch(`${API_URL_CLIENTES}/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          correo: email,
+          password,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(data.message || "Correo o contraseña incorrectos.");
         return;
       }
-      const cliente = JSON.parse(stored);
-      if (cliente.email === email && cliente.password === password) {
-        localStorage.setItem("cliente_logueado", "true");
-        alert(`Bienvenido/a ${cliente.nombre}`);
-        window.location.href = "/cliente/perfil";
-      } else {
-        alert("Correo o contrasena de cliente incorrectos.");
-      }
+      const clienteFront = mapServerCliente(data.cliente);
+      localStorage.setItem("cliente_actual", JSON.stringify(clienteFront));
+      localStorage.setItem("cliente_logueado", "true");
+      alert(`Bienvenido/a ${clienteFront.nombre}`);
+      window.location.href = "/cliente/perfil";
+    } catch (err) {
+      console.error(err);
+      alert("No se pudo conectar con el servidor. ¿Está el backend en marcha?");
     }
   };
 
@@ -145,15 +197,13 @@ const LoginPage = () => {
 
               <div>
                 <label className="block text-sm font-medium text-emerald-900 mb-1">
-                  Contrasena
+                  Contraseña
                 </label>
-                <input
-                  type="password"
-                  className="w-full rounded-xl border border-emerald-100 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-400"
-                  placeholder="••••••••"
+                <PasswordInput
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
+                  autoComplete="current-password"
                 />
               </div>
 
@@ -184,9 +234,6 @@ const LoginPage = () => {
           {/* REGISTRO (solo clientes) */}
           {isRegister && (
             <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="text-sm text-amber-600 bg-amber-50 p-2 rounded-lg mb-2">
-                Nota: Los correos @muruhuay.com no pueden registrarse como clientes.
-              </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm font-medium text-emerald-900 mb-1">Nombres</label>
@@ -209,8 +256,13 @@ const LoginPage = () => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-emerald-900 mb-1">Contrasena</label>
-                <input type="password" className="w-full rounded-xl border border-emerald-100 px-4 py-2" value={regPassword} onChange={(e) => setRegPassword(e.target.value)} required />
+                <label className="block text-sm font-medium text-emerald-900 mb-1">Contraseña</label>
+                <PasswordInput
+                  value={regPassword}
+                  onChange={(e) => setRegPassword(e.target.value)}
+                  required
+                  autoComplete="new-password"
+                />
               </div>
 
               <button type="submit" className="w-full mt-4 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3 rounded-full shadow-lg transition">

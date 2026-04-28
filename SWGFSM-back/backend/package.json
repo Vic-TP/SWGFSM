@@ -11,10 +11,13 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "bcrypt": "^6.0.0",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^5.1.0",
-    "mongoose": "^8.19.3"
+    "mongoose": "^8.19.3",
+    "nodemailer": "^8.0.5",
+    "pdfkit": "^0.18.0"
   },
   "devDependencies": {
     "nodemon": "^3.1.14"

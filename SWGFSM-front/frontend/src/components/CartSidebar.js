@@ -1,6 +1,6 @@
 // src/components/CartSidebar.js
 
-import React, { useState } from "react";
+import React from "react";
 
 const CartSidebar = ({ isOpen, items, onClose, onCheckout, total }) => {
   if (!isOpen) return null;
@@ -39,13 +39,20 @@ const CartSidebar = ({ isOpen, items, onClose, onCheckout, total }) => {
           <>
             <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
               {items.map((item) => (
-                <div key={item.id + item.measure} className="flex gap-3 pb-4 border-b">
+                <div
+                  key={`${item.productoId || item.id}-${item.measure}`}
+                  className="flex gap-3 pb-4 border-b"
+                >
                   <div className="w-16 h-16 bg-lime-50 rounded-xl flex items-center justify-center">
                     <img src={item.image} alt={item.name} className="w-12 h-12 object-contain" />
                   </div>
                   <div className="flex-1">
                     <p className="font-semibold text-sm text-gray-900">{item.name}</p>
-                    <p className="text-xs text-gray-400 mt-0.5">{item.measure} x {item.quantity}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      {item.measure === "1kg" || !item.measure
+                        ? `${item.cantidadKg ?? item.quantity} kg`
+                        : `${item.measure} × ${item.quantity}`}
+                    </p>
                   </div>
                   <p className="font-bold text-sm text-emerald-800">S/ {(item.price * item.quantity).toFixed(2)}</p>
                 </div>

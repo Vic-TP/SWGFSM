@@ -4,9 +4,24 @@ import ProveedoresTable from "./ProveedoresTable";
 import VentasAdmin from "./VentasAdmin";
 import CajaRegistradora from "./CajaRegistradora";
 import Prediccion from "../predict/Prediccion";
+import PasswordInput from "./PasswordInput";
 
 const API_URL_PRODUCTOS  = "http://localhost:5000/api/producto";
 const API_URL_INVENTARIO = "http://localhost:5000/api/inventario";
+const API_URL_CLIENTES   = "http://localhost:5000/api/clientes";
+const API_URL_EMPLEADOS  = "http://localhost:5000/api/empleados";
+
+const readTrabajador = () => {
+  try {
+    const raw = localStorage.getItem("trabajador_actual");
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+};
+
+/** Vendedor: solo caja + ventas. Resto de roles: panel completo. */
+const isPanelVendedor = (t) => t?.rol === "Vendedor";
 
 /* ── Modal confirmación de logout ── */
 const LogoutModal = ({ onConfirm, onCancel }) => (
@@ -32,7 +47,9 @@ const LogoutModal = ({ onConfirm, onCancel }) => (
 );
 
 const AdminDashboard = () => {
-  const [selectedSection, setSelectedSection] = useState("dashboard");
+  const [selectedSection, setSelectedSection] = useState(() =>
+    isPanelVendedor(readTrabajador()) ? "caja" : "dashboard"
+  );
   const [modoNuevaVenta, setModoNuevaVenta]   = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
 
@@ -44,27 +61,173 @@ const AdminDashboard = () => {
   const [inventario, setInventario] = useState([]);
 
   const [modoEditarProducto, setModoEditarProducto] = useState(false);
-  const [productoActual, setProductoActual] = useState({
-    nombre: "", categoriaId: "", unidadMedida: "", precioCompra: "",
-    precioVenta: "", stockMinimo: "", stockSemanal: "", descripcion: "", estado: "ACTIVO",
+  const emptyProductoForm = () => ({
+    nombre: "",
+    tipo: "",
+    unidadMedida: "kg",
+    precioVenta: "",
+    stockPaltaMadura: "",
+    stockPaltaVerde: "",
+    stockPaltaSazon: "",
+    detalle: "",
+    tamano: "",
+    descripcion: "",
+    estado: "ACTIVO",
   });
+  const [productoActual, setProductoActual] = useState(emptyProductoForm);
 
   const [nuevoInventario, setNuevoInventario] = useState({
     fecha: "", proveedor: "", numeroPuesto: "", producto: "",
-    tipo: "", tamano: "", detalle: "", cantidad: "", precio: "", pago: "",
+    tipo: "", tamano: "", detalle: "", cantidad: "", precioCompra: "", totalInvertido: "",
   });
 
-  const clientesDemo = [
-    { _id: "1", nombres: "Hugo", apellidos: "García López", tipoCliente: "MINORISTA", telefono: "999123456", correo: "hgarcia@gmail.com", direccion: "Av. Principal 456 – Chosica", estado: "ACTIVO" },
-  ];
-  const empleadosDemo = [
-    { _id: "1", nombres: "María", apellidos: "Pérez Soto", correo: "maria@muruhuay.com", telefono: "987654321", rol: "ADMIN_ALMACEN", estado: "ACTIVO" },
-  ];
+  const [clientes, setClientes] = useState([]);
+  const [empleados, setEmpleados] = useState([]);
+  const [cargandoUsuarios, setCargandoUsuarios] = useState(false);
+  const emptyEmpleadoForm = () => ({
+    nombres: "",
+    apellidos: "",
+    correo: "",
+    telefono: "",
+    rol: "Vendedor",
+    password: "",
+  });
+  const [empleadoForm, setEmpleadoForm] = useState(emptyEmpleadoForm);
+  const [editingEmpleadoId, setEditingEmpleadoId] = useState(null);
+
+  useEffect(() => {
+    const ok = localStorage.getItem("trabajador_logueado") === "true";
+    if (!ok) {
+      window.location.href = "/login-trabajador";
+    }
+  }, []);
+
+  useEffect(() => {
+    const t = readTrabajador();
+    if (!isPanelVendedor(t)) return;
+    if (!["caja", "ventas"].includes(selectedSection)) {
+      setSelectedSection("caja");
+    }
+  }, [selectedSection]);
 
   useEffect(() => {
     if (selectedSection === "productos")  fetchProductos();
     if (selectedSection === "inventario") fetchInventario();
+    if (selectedSection === "usuarios")   fetchUsuarios();
   }, [selectedSection]);
+
+  const fetchClientes = async () => {
+    try {
+      const r = await fetch(API_URL_CLIENTES);
+      if (!r.ok) throw new Error(String(r.status));
+      setClientes(await r.json());
+    } catch (e) {
+      console.error(e);
+      setClientes([]);
+    }
+  };
+
+  const fetchEmpleados = async () => {
+    try {
+      const r = await fetch(API_URL_EMPLEADOS);
+      if (!r.ok) throw new Error(String(r.status));
+      setEmpleados(await r.json());
+    } catch (e) {
+      console.error(e);
+      setEmpleados([]);
+    }
+  };
+
+  const fetchUsuarios = async () => {
+    setCargandoUsuarios(true);
+    try {
+      await Promise.all([fetchClientes(), fetchEmpleados()]);
+    } finally {
+      setCargandoUsuarios(false);
+    }
+  };
+
+  const handleChangeEmpleadoForm = (e) =>
+    setEmpleadoForm((p) => ({ ...p, [e.target.name]: e.target.value }));
+
+  const abrirModalNuevoEmpleado = () => {
+    setEditingEmpleadoId(null);
+    setEmpleadoForm(emptyEmpleadoForm());
+    setShowEmpleadoModal(true);
+  };
+
+  const abrirModalEditarEmpleado = (emp) => {
+    setEditingEmpleadoId(emp._id);
+    setEmpleadoForm({
+      nombres: emp.nombres || "",
+      apellidos: emp.apellidos || "",
+      correo: emp.correo || "",
+      telefono: emp.telefono || "",
+      rol: emp.rol || "Vendedor",
+      password: "",
+    });
+    setShowEmpleadoModal(true);
+  };
+
+  const cerrarModalEmpleado = () => {
+    setShowEmpleadoModal(false);
+    setEditingEmpleadoId(null);
+    setEmpleadoForm(emptyEmpleadoForm());
+  };
+
+  const handleSubmitEmpleado = async (e) => {
+    e.preventDefault();
+    if (!empleadoForm.correo?.trim()) {
+      alert("El correo del empleado es obligatorio.");
+      return;
+    }
+    const pwd = empleadoForm.password?.trim() || "";
+    if (!editingEmpleadoId && pwd.length < 6) {
+      alert("La contraseña es obligatoria al crear un empleado (mínimo 6 caracteres).");
+      return;
+    }
+    if (editingEmpleadoId && pwd.length > 0 && pwd.length < 6) {
+      alert("Si cambias la contraseña, debe tener al menos 6 caracteres.");
+      return;
+    }
+    try {
+      const basePayload = {
+        nombres: empleadoForm.nombres,
+        apellidos: empleadoForm.apellidos,
+        correo: empleadoForm.correo,
+        telefono: empleadoForm.telefono,
+        rol: empleadoForm.rol,
+      };
+      let res;
+      if (editingEmpleadoId) {
+        const payload = { ...basePayload };
+        if (pwd) payload.password = pwd;
+        res = await fetch(`${API_URL_EMPLEADOS}/${editingEmpleadoId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+      } else {
+        res = await fetch(API_URL_EMPLEADOS, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...basePayload, password: pwd }),
+        });
+      }
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(data.message || "No se pudo guardar el empleado.");
+        return;
+      }
+      const fueEdicion = !!editingEmpleadoId;
+      cerrarModalEmpleado();
+      fetchEmpleados();
+      alert(fueEdicion ? "Empleado actualizado." : "Empleado registrado.");
+    } catch (err) {
+      console.error(err);
+      alert("Error de conexión al guardar empleado.");
+    }
+  };
 
   const fetchProductos = async () => { 
     try { 
@@ -91,36 +254,130 @@ const AdminDashboard = () => {
     } 
   };
 
+  useEffect(() => {
+    const onStock = () => {
+      if (selectedSection === "productos") fetchProductos();
+    };
+    window.addEventListener("swgfsm-stock-actualizado", onStock);
+    return () => window.removeEventListener("swgfsm-stock-actualizado", onStock);
+  }, [selectedSection]);
+
   const handleChangeProducto  = (e) => setProductoActual((p)  => ({ ...p,  [e.target.name]: e.target.value }));
   const handleChangeInventario = (e) => setNuevoInventario((p) => ({ ...p, [e.target.name]: e.target.value }));
 
-  const abrirModalNuevoProducto    = () => { setModoEditarProducto(false); setProductoActual({ nombre: "", categoriaId: "", unidadMedida: "", precioCompra: "", precioVenta: "", stockMinimo: "", stockSemanal: "", descripcion: "", estado: "ACTIVO" }); setShowProductoModal(true); };
-  const abrirModalEditarProducto   = (p) => { setModoEditarProducto(true); setProductoActual(p); setShowProductoModal(true); };
+  const mapProductoToForm = (p) => ({
+    ...emptyProductoForm(),
+    ...p,
+    tipo: p.tipo ?? p.categoriaId ?? "",
+    unidadMedida: p.unidadMedida || "kg",
+    stockPaltaMadura: p.stockPaltaMadura ?? "",
+    stockPaltaVerde: p.stockPaltaVerde ?? "",
+    stockPaltaSazon: p.stockPaltaSazon ?? "",
+    detalle: p.detalle ?? "",
+    tamano: p.tamano ?? "",
+  });
+
+  const abrirModalNuevoProducto = () => {
+    setModoEditarProducto(false);
+    setProductoActual(emptyProductoForm());
+    setShowProductoModal(true);
+  };
+  const abrirModalEditarProducto = (p) => {
+    setModoEditarProducto(true);
+    setProductoActual(mapProductoToForm(p));
+    setShowProductoModal(true);
+  };
 
   const handleSubmitProducto = async (e) => {
     e.preventDefault();
+    const num = (v) => {
+      const n = Number(v);
+      return Number.isFinite(n) ? n : 0;
+    };
+    const payload = {
+      nombre: String(productoActual.nombre || "").trim(),
+      tipo: String(productoActual.tipo || "").trim(),
+      unidadMedida: String(productoActual.unidadMedida || "kg").trim() || "kg",
+      precioVenta: num(productoActual.precioVenta),
+      stockPaltaMadura: num(productoActual.stockPaltaMadura),
+      stockPaltaVerde: num(productoActual.stockPaltaVerde),
+      stockPaltaSazon: num(productoActual.stockPaltaSazon),
+      detalle: String(productoActual.detalle || "").trim(),
+      tamano: String(productoActual.tamano || "").trim(),
+      descripcion: String(productoActual.descripcion || "").trim(),
+      estado: productoActual.estado || "ACTIVO",
+    };
+    if (!payload.nombre) {
+      alert("El nombre del producto es obligatorio.");
+      return;
+    }
     try {
       const method = modoEditarProducto ? "PUT" : "POST";
-      const url    = modoEditarProducto ? `${API_URL_PRODUCTOS}/${productoActual._id}` : API_URL_PRODUCTOS;
-      const res    = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(productoActual) });
-      if (res.ok) { fetchProductos(); setShowProductoModal(false); alert("Producto guardado."); }
-      else alert("Error al guardar producto.");
-    } catch (err) { console.error(err); }
+      const url = modoEditarProducto ? `${API_URL_PRODUCTOS}/${productoActual._id}` : API_URL_PRODUCTOS;
+      const res = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (res.ok) {
+        fetchProductos();
+        setShowProductoModal(false);
+        alert("Producto guardado.");
+      } else alert("Error al guardar producto.");
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const eliminarProducto = async (p) => {
+    if (!p?._id) return;
+    if (!window.confirm(`¿Eliminar el producto "${p.nombre}"? Esta acción no se puede deshacer.`)) return;
+    try {
+      const res = await fetch(`${API_URL_PRODUCTOS}/${p._id}`, { method: "DELETE" });
+      if (res.ok) {
+        if (showProductoModal && productoActual._id === p._id) {
+          setShowProductoModal(false);
+        }
+        fetchProductos();
+        alert("Producto eliminado.");
+      } else {
+        let msg = "No se pudo eliminar el producto.";
+        try {
+          const err = await res.json();
+          if (err.message) msg = err.message;
+        } catch {
+          /* ignore */
+        }
+        alert(msg);
+      }
+    } catch (e) {
+      console.error(e);
+      alert("Error de conexión al eliminar.");
+    }
   };
 
   const handleSubmitInventario = async (e) => {
     e.preventDefault();
     const cantidad = Number(nuevoInventario.cantidad);
-    const precio   = Number(nuevoInventario.precio);
-    const pago     = Number(nuevoInventario.pago);
-    if ([cantidad, precio, pago].some((n) => isNaN(n) || n < 0)) { alert("Cantidad, precio y pago deben ser números válidos."); return; }
-    const payload = { ...nuevoInventario, cantidad, precio, pago, fecha: nuevoInventario.fecha ? new Date(nuevoInventario.fecha).toISOString() : undefined };
+    const precioCompra = Number(nuevoInventario.precioCompra);
+    const totalInvertido = Number(nuevoInventario.totalInvertido);
+    if ([cantidad, precioCompra, totalInvertido].some((n) => isNaN(n) || n < 0)) {
+      alert("Cantidad, precio de compra y total invertido deben ser números válidos.");
+      return;
+    }
+    const payload = {
+      ...nuevoInventario,
+      cantidad,
+      precioCompra,
+      totalInvertido,
+      fecha: nuevoInventario.fecha ? new Date(nuevoInventario.fecha).toISOString() : undefined
+    };
     try {
       const res = await fetch(API_URL_INVENTARIO, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       if (res.ok) {
         fetchInventario();
         setShowRegistroInventarioModal(false);
-        setNuevoInventario({ fecha: "", proveedor: "", numeroPuesto: "", producto: "", tipo: "", tamano: "", detalle: "", cantidad: "", precio: "", pago: "" });
+        setNuevoInventario({ fecha: "", proveedor: "", numeroPuesto: "", producto: "", tipo: "", tamano: "", detalle: "", cantidad: "", precioCompra: "", totalInvertido: "" });
         alert("Registro guardado.");
       } else {
         let msg = "Error al guardar inventario.";
@@ -131,7 +388,11 @@ const AdminDashboard = () => {
   };
 
   const handleBack   = () => { if (window.opener) window.close(); else window.history.back(); };
-  const confirmLogout = () => { window.location.href = "/"; };
+  const confirmLogout = () => {
+    localStorage.removeItem("trabajador_logueado");
+    localStorage.removeItem("trabajador_actual");
+    window.location.href = "/";
+  };
 
   const menuBtnClasses = (s) =>
     `w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition ${
@@ -148,6 +409,11 @@ const AdminDashboard = () => {
     ventas: "Ventas",
     prediction: "Predicción",
   };
+
+  const trabajadorSesion = readTrabajador();
+  const menuSectionKeys = isPanelVendedor(trabajadorSesion)
+    ? ["caja", "ventas"]
+    : Object.keys(sectionLabels);
 
   const inp = "w-full border border-gray-200 p-2.5 rounded-xl text-sm outline-none focus:ring-2 focus:ring-emerald-400";
 
@@ -178,7 +444,14 @@ const AdminDashboard = () => {
 
     /* CAJA REGISTRADORA */
     if (selectedSection === "caja") {
-      return <CajaRegistradora />;
+      return (
+        <CajaRegistradora
+          onVentaCompletada={() => {
+            fetchProductos();
+            fetchClientes();
+          }}
+        />
+      );
     }
 
     /* PREDICCION */
@@ -190,9 +463,17 @@ const AdminDashboard = () => {
     /* USUARIOS */
     if (selectedSection === "usuarios") return (
       <section className="flex-1 p-8 space-y-8">
+        <h1 className="text-2xl font-bold text-emerald-900">Usuarios</h1>
         <div className="bg-white border border-lime-200 rounded-3xl overflow-hidden">
-          <div className="px-8 py-4 border-b border-lime-100">
+          <div className="px-8 py-4 border-b border-lime-100 flex justify-between items-center">
             <h2 className="text-sm font-bold text-emerald-900">Clientes</h2>
+            <button
+              type="button"
+              onClick={fetchClientes}
+              className="px-3 py-1.5 rounded-full text-xs font-semibold border border-emerald-200 text-emerald-800 hover:bg-emerald-50"
+            >
+              Actualizar
+            </button>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -200,14 +481,23 @@ const AdminDashboard = () => {
                 {["Nombres", "Apellidos", "Tipo", "Teléfono", "Correo", "Dirección", "Estado"].map(h => <th key={h} className="px-4 py-3 font-semibold">{h}</th>)}
               </tr></thead>
               <tbody>
-                {clientesDemo.map(c => (
-                  <tr key={c._id} className="border-t hover:bg-lime-50">
-                    <td className="px-4 py-2">{c.nombres}</td><td className="px-4 py-2">{c.apellidos}</td>
-                    <td className="px-4 py-2">{c.tipoCliente}</td><td className="px-4 py-2">{c.telefono}</td>
-                    <td className="px-4 py-2">{c.correo}</td><td className="px-4 py-2">{c.direccion}</td>
-                    <td className="px-4 py-2"><span className="bg-emerald-100 text-emerald-800 text-xs font-semibold px-2 py-0.5 rounded-full">{c.estado}</span></td>
-                  </tr>
-                ))}
+                {cargandoUsuarios ? (
+                  <tr><td colSpan="7" className="px-4 py-8 text-center text-gray-400">Cargando clientes…</td></tr>
+                ) : clientes.length === 0 ? (
+                  <tr><td colSpan="7" className="px-4 py-8 text-center text-gray-400">No hay clientes registrados. Los datos ingresados en Caja registradora al concretar una venta aparecerán aquí.</td></tr>
+                ) : (
+                  clientes.map((c) => (
+                    <tr key={c._id} className="border-t hover:bg-lime-50">
+                      <td className="px-4 py-2">{c.nombres}</td>
+                      <td className="px-4 py-2">{c.apellidos}</td>
+                      <td className="px-4 py-2">{c.tipoCliente}</td>
+                      <td className="px-4 py-2">{c.telefono || "—"}</td>
+                      <td className="px-4 py-2">{c.correo || "—"}</td>
+                      <td className="px-4 py-2">{c.direccion || "—"}</td>
+                      <td className="px-4 py-2"><span className="bg-emerald-100 text-emerald-800 text-xs font-semibold px-2 py-0.5 rounded-full">{c.estado}</span></td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
@@ -216,22 +506,39 @@ const AdminDashboard = () => {
         <div className="bg-white border border-lime-200 rounded-3xl overflow-hidden">
           <div className="px-8 py-4 border-b border-lime-100 flex justify-between items-center">
             <h2 className="text-sm font-bold text-emerald-900">Empleados</h2>
-            <button onClick={() => setShowEmpleadoModal(true)} className="px-4 py-1.5 rounded-full text-xs font-semibold bg-emerald-700 text-lime-50 hover:bg-emerald-600">+ Añadir</button>
+            <button type="button" onClick={abrirModalNuevoEmpleado} className="px-4 py-1.5 rounded-full text-xs font-semibold bg-emerald-700 text-lime-50 hover:bg-emerald-600">+ Añadir</button>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead><tr className="bg-emerald-900 text-lime-50 text-left">
-                {["Nombres", "Apellidos", "Correo", "Teléfono", "Rol", "Estado"].map(h => <th key={h} className="px-4 py-3 font-semibold">{h}</th>)}
+                {["Nombres", "Apellidos", "Correo", "Teléfono", "Rol", "Estado", "Acciones"].map(h => <th key={h} className="px-4 py-3 font-semibold">{h}</th>)}
               </tr></thead>
               <tbody>
-                {empleadosDemo.map(e => (
-                  <tr key={e._id} className="border-t hover:bg-lime-50">
-                    <td className="px-4 py-2">{e.nombres}</td><td className="px-4 py-2">{e.apellidos}</td>
-                    <td className="px-4 py-2">{e.correo}</td><td className="px-4 py-2">{e.telefono}</td>
-                    <td className="px-4 py-2">{e.rol}</td>
-                    <td className="px-4 py-2"><span className="bg-emerald-100 text-emerald-800 text-xs font-semibold px-2 py-0.5 rounded-full">{e.estado}</span></td>
-                  </tr>
-                ))}
+                {cargandoUsuarios ? (
+                  <tr><td colSpan="7" className="px-4 py-8 text-center text-gray-400">Cargando empleados…</td></tr>
+                ) : empleados.length === 0 ? (
+                  <tr><td colSpan="7" className="px-4 py-8 text-center text-gray-400">No hay empleados. Usa &quot;+ Añadir&quot; para registrar uno en la base de datos.</td></tr>
+                ) : (
+                  empleados.map((e) => (
+                    <tr key={e._id} className="border-t hover:bg-lime-50">
+                      <td className="px-4 py-2">{e.nombres}</td>
+                      <td className="px-4 py-2">{e.apellidos}</td>
+                      <td className="px-4 py-2">{e.correo}</td>
+                      <td className="px-4 py-2">{e.telefono || "—"}</td>
+                      <td className="px-4 py-2">{e.rol}</td>
+                      <td className="px-4 py-2"><span className="bg-emerald-100 text-emerald-800 text-xs font-semibold px-2 py-0.5 rounded-full">{e.estado}</span></td>
+                      <td className="px-4 py-2">
+                        <button
+                          type="button"
+                          onClick={() => abrirModalEditarEmpleado(e)}
+                          className="text-xs font-semibold text-emerald-800 hover:underline"
+                        >
+                          Editar
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
@@ -240,30 +547,59 @@ const AdminDashboard = () => {
         {showEmpleadoModal && (
           <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40">
             <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-              <div className="flex items-center justify-between px-6 py-4 border-b">
-                <h2 className="text-base font-bold text-gray-900">Nuevo empleado</h2>
-                <button onClick={() => setShowEmpleadoModal(false)} className="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
-              </div>
-              <div className="px-6 py-4 space-y-3 text-sm">
-                {["Nombres", "Apellidos", "Email", "Teléfono"].map(f => (
-                  <div key={f}>
-                    <label className="block mb-1 font-medium text-gray-700">{f}</label>
-                    <input type={f === "Email" ? "email" : "text"} className={inp} />
+              <form onSubmit={handleSubmitEmpleado}>
+                <div className="flex items-center justify-between px-6 py-4 border-b">
+                  <h2 className="text-base font-bold text-gray-900">{editingEmpleadoId ? "Editar empleado" : "Nuevo empleado"}</h2>
+                  <button type="button" onClick={cerrarModalEmpleado} className="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
+                </div>
+                <div className="px-6 py-4 space-y-3 text-sm">
+                  <div>
+                    <label className="block mb-1 font-medium text-gray-700">Nombres</label>
+                    <input name="nombres" value={empleadoForm.nombres} onChange={handleChangeEmpleadoForm} className={inp} required />
                   </div>
-                ))}
-                <div>
-                  <label className="block mb-1 font-medium text-gray-700">Rol</label>
-                  <select className={inp}><option>Vendedor</option><option>Administrador</option></select>
+                  <div>
+                    <label className="block mb-1 font-medium text-gray-700">Apellidos</label>
+                    <input name="apellidos" value={empleadoForm.apellidos} onChange={handleChangeEmpleadoForm} className={inp} />
+                  </div>
+                  <div>
+                    <label className="block mb-1 font-medium text-gray-700">Correo *</label>
+                    <input type="email" name="correo" value={empleadoForm.correo} onChange={handleChangeEmpleadoForm} className={inp} required />
+                  </div>
+                  <div>
+                    <label className="block mb-1 font-medium text-gray-700">
+                      Contraseña {editingEmpleadoId ? "(opcional)" : "*"}
+                    </label>
+                    <PasswordInput
+                      name="password"
+                      value={empleadoForm.password}
+                      onChange={handleChangeEmpleadoForm}
+                      placeholder={
+                        editingEmpleadoId ? "Dejar en blanco para no cambiar" : "Ingrese su contraseña (mín. 6 caracteres)"
+                      }
+                      autoComplete="new-password"
+                      required={!editingEmpleadoId}
+                    />
+                  </div>
+                  <div>
+                    <label className="block mb-1 font-medium text-gray-700">Teléfono</label>
+                    <input name="telefono" value={empleadoForm.telefono} onChange={handleChangeEmpleadoForm} className={inp} />
+                  </div>
+                  <div>
+                    <label className="block mb-1 font-medium text-gray-700">Rol</label>
+                    <select name="rol" value={empleadoForm.rol} onChange={handleChangeEmpleadoForm} className={inp}>
+                      <option value="Vendedor">Vendedor</option>
+                      <option value="Personal de despacho">Personal de despacho</option>
+                      <option value="Administrador de almacén">Administrador de almacén</option>
+                      <option value="Administrador de compras">Administrador de compras</option>
+                      <option value="Administrador de sistemas">Administrador de sistemas</option>
+                    </select>
+                  </div>
                 </div>
-                <div>
-                  <label className="block mb-1 font-medium text-gray-700">Contraseña</label>
-                  <input type="password" className={inp} />
+                <div className="flex justify-end gap-3 px-6 py-4 border-t">
+                  <button type="button" onClick={cerrarModalEmpleado} className="px-4 py-2 rounded-full text-sm border border-gray-300 text-gray-600 hover:bg-gray-50">Cancelar</button>
+                  <button type="submit" className="px-4 py-2 rounded-full text-sm bg-emerald-700 text-white hover:bg-emerald-800">Guardar</button>
                 </div>
-              </div>
-              <div className="flex justify-end gap-3 px-6 py-4 border-t">
-                <button onClick={() => setShowEmpleadoModal(false)} className="px-4 py-2 rounded-full text-sm border border-gray-300 text-gray-600 hover:bg-gray-50">Cancelar</button>
-                <button className="px-4 py-2 rounded-full text-sm bg-emerald-700 text-white hover:bg-emerald-800">Guardar</button>
-              </div>
+              </form>
             </div>
           </div>
         )}
@@ -274,32 +610,93 @@ const AdminDashboard = () => {
     if (selectedSection === "productos") return (
       <section className="flex-1 p-8">
         <div className="bg-white border border-lime-200 rounded-3xl overflow-hidden">
-          <div className="px-8 py-4 border-b border-lime-100 flex justify-between items-center">
+          <div className="px-8 py-4 border-b border-lime-100 flex justify-between items-center flex-wrap gap-2">
             <h2 className="font-bold text-emerald-900">Listado de productos</h2>
-            <button onClick={abrirModalNuevoProducto} className="px-4 py-2 text-xs font-semibold rounded-full bg-emerald-700 text-lime-50 hover:bg-emerald-800">+ Añadir producto</button>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  fetchProductos();
+                  window.dispatchEvent(new Event("swgfsm-stock-actualizado"));
+                }}
+                className="px-4 py-2 text-xs font-semibold rounded-full border border-emerald-700 text-emerald-800 hover:bg-emerald-50"
+              >
+                Actualizar
+              </button>
+              <button onClick={abrirModalNuevoProducto} className="px-4 py-2 text-xs font-semibold rounded-full bg-emerald-700 text-lime-50 hover:bg-emerald-800">+ Añadir producto</button>
+            </div>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left">
               <thead className="bg-emerald-900 text-lime-50">
-                <tr>{["Nombre","Categoría","Unidad","P. Compra","P. Venta","Stock Min.","Stock Sem.","Estado","Acciones"].map(h => <th key={h} className="px-4 py-3 font-semibold">{h}</th>)}</tr>
+                <tr>
+                  {[
+                    "Producto",
+                    "Tipo",
+                    "Unidad",
+                    "P. venta",
+                    "Madura (kg)",
+                    "Verde (kg)",
+                    "Sazón (kg)",
+                    "Estado",
+                    "Acciones",
+                  ].map((h) => (
+                    <th key={h} className="px-4 py-3 font-semibold whitespace-nowrap">
+                      {h}
+                    </th>
+                  ))}
+                </tr>
               </thead>
               <tbody>
-                {productos.map(p => (
-                  <tr key={p._id} className="border-b hover:bg-lime-50">
-                    <td className="px-4 py-2 font-medium">{p.nombre}</td>
-                    <td className="px-4 py-2">{p.categoriaId}</td>
-                    <td className="px-4 py-2">{p.unidadMedida}</td>
-                    <td className="px-4 py-2">S/ {p.precioCompra}</td>
-                    <td className="px-4 py-2">S/ {p.precioVenta}</td>
-                    <td className="px-4 py-2">{p.stockMinimo}</td>
-                    <td className="px-4 py-2">{p.stockSemanal}</td>
-                    <td className="px-4 py-2"><span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${p.estado === "ACTIVO" ? "bg-emerald-100 text-emerald-800" : "bg-gray-100 text-gray-600"}`}>{p.estado}</span></td>
-                    <td className="px-4 py-2">
-                      <button onClick={() => abrirModalEditarProducto(p)} className="px-3 py-1 text-xs rounded-full bg-amber-500 text-white hover:bg-amber-600">Editar</button>
+                {productos.map((p) => {
+                  const tipo = p.tipo ?? p.categoriaId ?? "—";
+                  const u = p.unidadMedida || "kg";
+                  return (
+                    <tr key={p._id} className="border-b hover:bg-lime-50">
+                      <td className="px-4 py-2 font-medium">{p.nombre}</td>
+                      <td className="px-4 py-2">{tipo}</td>
+                      <td className="px-4 py-2">{u}</td>
+                      <td className="px-4 py-2">S/ {p.precioVenta}</td>
+                      <td className="px-4 py-2">{p.stockPaltaMadura ?? "—"}</td>
+                      <td className="px-4 py-2">{p.stockPaltaVerde ?? "—"}</td>
+                      <td className="px-4 py-2">{p.stockPaltaSazon ?? "—"}</td>
+                      <td className="px-4 py-2">
+                        <span
+                          className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                            p.estado === "ACTIVO" ? "bg-emerald-100 text-emerald-800" : "bg-gray-100 text-gray-600"
+                          }`}
+                        >
+                          {p.estado}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => abrirModalEditarProducto(p)}
+                            className="px-3 py-1 text-xs rounded-full bg-amber-500 text-white hover:bg-amber-600"
+                          >
+                            Editar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => eliminarProducto(p)}
+                            className="px-3 py-1 text-xs rounded-full bg-red-600 text-white hover:bg-red-700"
+                          >
+                            Eliminar
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {productos.length === 0 && (
+                  <tr>
+                    <td colSpan="9" className="text-center py-6 text-gray-400">
+                      No hay productos registrados.
                     </td>
                   </tr>
-                ))}
-                {productos.length === 0 && <tr><td colSpan="9" className="text-center py-6 text-gray-400">No hay productos registrados.</td></tr>}
+                )}
               </tbody>
             </table>
           </div>
@@ -310,24 +707,87 @@ const AdminDashboard = () => {
             <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl p-6 overflow-y-auto max-h-[90vh]">
               <h2 className="text-lg font-bold mb-4 text-emerald-900">{modoEditarProducto ? "Editar" : "Nuevo"} Producto</h2>
               <form onSubmit={handleSubmitProducto} className="grid grid-cols-2 gap-4">
-                {[
-                  { label: "Nombre", name: "nombre", type: "text", required: true },
-                  { label: "Categoría", name: "categoriaId", type: "text" },
-                  { label: "Unidad de medida", name: "unidadMedida", type: "text" },
-                  { label: "Precio compra", name: "precioCompra", type: "number" },
-                  { label: "Precio venta", name: "precioVenta", type: "number" },
-                  { label: "Stock mínimo", name: "stockMinimo", type: "number" },
-                  { label: "Stock semanal", name: "stockSemanal", type: "number" },
-                ].map(({ label, name, type, required }) => (
-                  <div key={name}>
-                    <label className="block text-xs font-bold mb-1 text-gray-600">{label}</label>
-                    <input className={inp} type={type} step={type === "number" ? "0.01" : undefined} name={name} value={productoActual[name] || ""} onChange={handleChangeProducto} required={required} />
-                  </div>
-                ))}
+                <div>
+                  <label className="block text-xs font-bold mb-1 text-gray-600">Producto</label>
+                  <input
+                    className={inp}
+                    type="text"
+                    name="nombre"
+                    value={productoActual.nombre || ""}
+                    onChange={handleChangeProducto}
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold mb-1 text-gray-600">Tipo</label>
+                  <input className={inp} type="text" name="tipo" value={productoActual.tipo || ""} onChange={handleChangeProducto} />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold mb-1 text-gray-600">Unidad de medida (kg)</label>
+                  <input className={inp} type="text" name="unidadMedida" value={productoActual.unidadMedida || "kg"} onChange={handleChangeProducto} />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold mb-1 text-gray-600">Precio venta</label>
+                  <input
+                    className={inp}
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    name="precioVenta"
+                    value={productoActual.precioVenta || ""}
+                    onChange={handleChangeProducto}
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold mb-1 text-gray-600">Stock palta madura (kg)</label>
+                  <input
+                    className={inp}
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    name="stockPaltaMadura"
+                    value={productoActual.stockPaltaMadura ?? ""}
+                    onChange={handleChangeProducto}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold mb-1 text-gray-600">Stock palta verde (kg)</label>
+                  <input
+                    className={inp}
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    name="stockPaltaVerde"
+                    value={productoActual.stockPaltaVerde ?? ""}
+                    onChange={handleChangeProducto}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold mb-1 text-gray-600">Stock palta sazón (kg)</label>
+                  <input
+                    className={inp}
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    name="stockPaltaSazon"
+                    value={productoActual.stockPaltaSazon ?? ""}
+                    onChange={handleChangeProducto}
+                  />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-xs font-bold mb-1 text-gray-600">Detalle</label>
+                  <textarea className={inp} name="detalle" value={productoActual.detalle || ""} onChange={handleChangeProducto} rows={2} />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold mb-1 text-gray-600">Tamaño</label>
+                  <input className={inp} type="text" name="tamano" value={productoActual.tamano || ""} onChange={handleChangeProducto} />
+                </div>
                 <div>
                   <label className="block text-xs font-bold mb-1 text-gray-600">Estado</label>
                   <select className={inp} name="estado" value={productoActual.estado} onChange={handleChangeProducto}>
-                    <option value="ACTIVO">ACTIVO</option><option value="INACTIVO">INACTIVO</option>
+                    <option value="ACTIVO">ACTIVO</option>
+                    <option value="INACTIVO">INACTIVO</option>
                   </select>
                 </div>
                 <div className="col-span-2">
@@ -356,7 +816,7 @@ const AdminDashboard = () => {
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left">
               <thead className="bg-emerald-900 text-lime-50">
-                <tr>{["Fecha","Proveedor","Puesto","Producto","Tipo","Tamaño","Detalle","Cant.","Precio","Pago"].map(h => <th key={h} className="px-4 py-3">{h}</th>)}</tr>
+                <tr>{["Fecha","Proveedor","Puesto","Producto","Tipo","Tamaño","Detalle","Cant. (kg)","Precio de compra","Total invertido"].map(h => <th key={h} className="px-4 py-3">{h}</th>)}</tr>
               </thead>
               <tbody>
                 {inventario.length === 0
@@ -370,9 +830,9 @@ const AdminDashboard = () => {
                       <td className="px-4 py-2">{inv.tipo}</td>
                       <td className="px-4 py-2">{inv.tamano}</td>
                       <td className="px-4 py-2">{inv.detalle}</td>
-                      <td className="px-4 py-2 font-bold">{inv.cantidad}</td>
-                      <td className="px-4 py-2">S/ {inv.precio}</td>
-                      <td className="px-4 py-2 text-emerald-700 font-bold">S/ {inv.pago}</td>
+                      <td className="px-4 py-2 font-bold">{inv.cantidad} kg</td>
+                      <td className="px-4 py-2">S/ {inv.precioCompra ?? inv.precio}</td>
+                      <td className="px-4 py-2 text-emerald-700 font-bold">S/ {inv.totalInvertido ?? inv.pago}</td>
                     </tr>
                   ))}
               </tbody>
@@ -392,9 +852,24 @@ const AdminDashboard = () => {
                 <div><label className="block text-xs font-bold mb-1 text-gray-600">Tipo</label><input type="text" name="tipo" className={inp} value={nuevoInventario.tipo} onChange={handleChangeInventario} /></div>
                 <div><label className="block text-xs font-bold mb-1 text-gray-600">Tamaño</label><input type="text" name="tamano" className={inp} value={nuevoInventario.tamano} onChange={handleChangeInventario} /></div>
                 <div className="col-span-2"><label className="block text-xs font-bold mb-1 text-gray-600">Detalle</label><input type="text" name="detalle" className={inp} value={nuevoInventario.detalle} onChange={handleChangeInventario} /></div>
-                <div><label className="block text-xs font-bold mb-1 text-gray-600">Cantidad</label><input type="number" name="cantidad" className={inp} value={nuevoInventario.cantidad} onChange={handleChangeInventario} required /></div>
-                <div><label className="block text-xs font-bold mb-1 text-gray-600">Precio</label><input type="number" step="0.01" name="precio" className={inp} value={nuevoInventario.precio} onChange={handleChangeInventario} required /></div>
-                <div><label className="block text-xs font-bold mb-1 text-gray-600">Pago</label><input type="number" step="0.01" name="pago" className={inp} value={nuevoInventario.pago} onChange={handleChangeInventario} required /></div>
+                <div>
+                  <label className="block text-xs font-bold mb-1 text-gray-600">Cantidad (kg)</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      name="cantidad"
+                      min="0"
+                      step="0.01"
+                      className={inp}
+                      value={nuevoInventario.cantidad}
+                      onChange={handleChangeInventario}
+                      required
+                    />
+                    <span className="text-sm font-semibold text-emerald-800 shrink-0">kg</span>
+                  </div>
+                </div>
+                <div><label className="block text-xs font-bold mb-1 text-gray-600">Precio de compra</label><input type="number" step="0.01" name="precioCompra" className={inp} value={nuevoInventario.precioCompra} onChange={handleChangeInventario} required /></div>
+                <div><label className="block text-xs font-bold mb-1 text-gray-600">Total invertido</label><input type="number" step="0.01" name="totalInvertido" className={inp} value={nuevoInventario.totalInvertido} onChange={handleChangeInventario} required /></div>
                 <div className="col-span-2 flex justify-end gap-3 pt-4 border-t">
                   <button type="button" onClick={() => setShowRegistroInventarioModal(false)} className="px-4 py-2 rounded-full border border-gray-300 text-gray-600 hover:bg-gray-50">Cancelar</button>
                   <button type="submit" className="px-4 py-2 rounded-full bg-emerald-700 text-white hover:bg-emerald-800">Guardar</button>
@@ -421,18 +896,25 @@ const AdminDashboard = () => {
     <div className="min-h-screen flex bg-lime-100 font-sans">
       <aside className="w-64 bg-emerald-950 text-lime-50 flex flex-col shadow-2xl z-10 flex-shrink-0">
         <div className="p-6 border-b border-emerald-800">
-          <p className="text-xs text-emerald-400 uppercase tracking-widest mb-1">Panel Admin</p>
+          <p className="text-xs text-emerald-400 uppercase tracking-widest mb-1">
+            {isPanelVendedor(trabajadorSesion) ? "Panel vendedor" : "Panel Admin"}
+          </p>
           <h1 className="text-base font-bold leading-tight">Frutería Señor de Muruhuay</h1>
+          {trabajadorSesion?.nombres && (
+            <p className="text-xs text-emerald-300/90 mt-2">
+              {trabajadorSesion.nombres} {trabajadorSesion.apellidos || ""}
+            </p>
+          )}
         </div>
 
         <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
-          {Object.entries(sectionLabels).map(([sec, label]) => (
+          {menuSectionKeys.map((sec) => (
             <button
               key={sec}
               className={menuBtnClasses(sec)}
               onClick={() => { setSelectedSection(sec); setModoNuevaVenta(false); }}
             >
-              {label}
+              {sectionLabels[sec]}
             </button>
           ))}
         </nav>

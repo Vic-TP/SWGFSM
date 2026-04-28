@@ -23,13 +23,13 @@ const inventarioSchema = new mongoose.Schema({
     required: true,
     min: 0
   },
-  precio: { 
-    type: Number, 
+  precioCompra: {
+    type: Number,
     required: true,
     min: 0
   },
-  pago: { 
-    type: Number, 
+  totalInvertido: {
+    type: Number,
     required: true,
     min: 0
   },
@@ -55,10 +55,9 @@ const inventarioSchema = new mongoose.Schema({
     required: false,
     trim: true
   }
-}, { 
-  // ESTA LÍNEA ES LA IMPORTANTE:
-  // Fuerza a usar la carpeta 'Inventario' (con mayúscula) en MongoDB
-  collection: 'Inventario' 
+}, {
+  // Misma colección que en Atlas: test.Inventario
+  collection: 'Inventario'
 });
 
-module.exports = mongoose.model('Inventario', inventarioSchema);
+module.exports = mongoose.model('Inventario', inventarioSchema, 'Inventario');

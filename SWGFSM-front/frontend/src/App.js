@@ -1,16 +1,22 @@
 // src/App.js
 import React from "react";
 import HomePage from "./components/Homepage";
-import LoginPage from "./components/LoginPage";          // login para admin y cliente
+import LoginPage from "./components/LoginPage";          // login clientes (y legado)
+import WorkerLoginPage from "./components/WorkerLoginPage";
 import AdminDashboard from "./components/AdminDashboard";
 import ClientProfilePage from "./components/ClientProfilePage"; // perfil cliente (opcional)
 
 function App() {
   const path = window.location.pathname;
 
-  // Login (ADMIN o CLIENTE)
+  // Login cliente
   if (path === "/login") {
     return <LoginPage />;
+  }
+
+  // Acceso trabajador (empleados en base de datos)
+  if (path === "/login-trabajador") {
+    return <WorkerLoginPage />;
   }
 
   // Dashboard ADMIN

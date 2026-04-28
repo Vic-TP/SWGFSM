@@ -12,7 +12,7 @@ const Header = ({ onCartClick, cartCount, client }) => {
   };
 
   const handleAdminClick = () => {
-    window.location.href = "/login";
+    window.location.href = "/login-trabajador";
   };
 
   return (

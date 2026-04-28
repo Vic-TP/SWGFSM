@@ -59,6 +59,15 @@ const ventaSchema = new mongoose.Schema({
     enum: ['Pendiente', 'Enviado', 'Entregado', 'Cancelado'],
     default: 'Pendiente'
   },
+  /**
+   * Origen: CAJA = trabajador en caja registradora; ONLINE = cliente compró en la web.
+   * Sin valor = datos antiguos o no indicado (no asumir "online").
+   */
+  origen: {
+    type: String,
+    enum: ['CAJA', 'ONLINE'],
+    required: false
+  },
   comprobante: {
     type: String,
     enum: ['Boleta', 'Factura'],
@@ -71,7 +80,32 @@ const ventaSchema = new mongoose.Schema({
   creadoEn: {
     type: Date,
     default: Date.now
+  },
+  /**
+   * Si ya se descontó stock en producto para esta venta (Pendiente/Enviado/Entregado).
+   * Cancelado implica stock no descontado (o se revirtió).
+   */
+  stockDescontado: {
+    type: Boolean,
+    default: false
+  },
+  /** Detalle del descuento por línea (para revertir igual al aplicar) */
+  stockMovimientos: {
+    type: [
+      {
+        tipo: { type: String, enum: ['palta', 'semanal'] },
+        productoId: String,
+        dm: { type: Number, default: 0 },
+        dv: { type: Number, default: 0 },
+        ds: { type: Number, default: 0 },
+        cantidad: { type: Number }
+      }
+    ],
+    default: undefined
   }
+}, {
+  // Misma colección que en Atlas: test.ventas
+  collection: 'ventas'
 });
 
 // Generar número de venta automático - VERSIÓN CORREGIDA
@@ -81,7 +115,7 @@ ventaSchema.pre('save', async function(next) {
       const count = await mongoose.model('Venta').countDocuments();
       const numero = (count + 1).toString().padStart(6, '0');
       this.numeroVenta = `V-${numero}`;
-      console.log(`📝 Generado número de venta: ${this.numeroVenta}`);
+      console.log(`Generado número de venta: ${this.numeroVenta}`);
     }
     next();
   } catch (error) {
@@ -92,4 +126,4 @@ ventaSchema.pre('save', async function(next) {
   }
 });
 
-module.exports = mongoose.model('Venta', ventaSchema);
+module.exports = mongoose.model('Venta', ventaSchema, 'ventas');

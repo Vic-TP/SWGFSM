@@ -1,8 +1,24 @@
 // src/components/ClientProfilePage.js - VERSIÓN CON CONEXIÓN A MONGODB
 
 import React, { useEffect, useState } from "react";
+import PasswordInput from "./PasswordInput";
 
 const API_URL_VENTAS = "http://localhost:5000/api/ventas";
+const API_URL_CLIENTES = "http://localhost:5000/api/clientes";
+
+const mapServerCliente = (doc) => {
+  if (!doc) return null;
+  return {
+    _id: doc._id,
+    nombre: doc.nombres,
+    apellidos: doc.apellidos || "",
+    email: doc.correo,
+    telefono: doc.telefono || "",
+    documento: doc.documento || "",
+    tipoCliente: doc.tipoCliente,
+    estado: doc.estado,
+  };
+};
 
 const formatDate = (isoString) => {
   try {
@@ -71,7 +87,15 @@ const ClientProfilePage = () => {
         window.location.href = "/"; 
         return; 
       }
-      const c = JSON.parse(stored);
+      const raw = JSON.parse(stored);
+      const c =
+        raw.email != null && raw.nombre != null
+          ? raw
+          : mapServerCliente({
+              ...raw,
+              nombres: raw.nombres ?? raw.nombre,
+              correo: raw.correo ?? raw.email,
+            });
       setClient(c);
       setEditForm(c);
       
@@ -118,28 +142,80 @@ const ClientProfilePage = () => {
 
   const confirmLogout = () => {
     localStorage.removeItem("cliente_logueado");
+    localStorage.removeItem("cliente_actual");
     window.location.href = "/";
   };
 
-  const handleSaveProfile = () => {
-    const updatedClient = { ...client, ...editForm };
-    localStorage.setItem("cliente_actual", JSON.stringify(updatedClient));
-    setClient(updatedClient);
-    setEditing(false);
-    alert("Perfil actualizado correctamente");
+  const handleSaveProfile = async () => {
+    if (!client?._id) {
+      const updatedClient = { ...client, ...editForm };
+      localStorage.setItem("cliente_actual", JSON.stringify(updatedClient));
+      setClient(updatedClient);
+      setEditing(false);
+      alert("Perfil guardado solo en este navegador. Vuelve a iniciar sesión para sincronizar con el servidor.");
+      return;
+    }
+    try {
+      const res = await fetch(`${API_URL_CLIENTES}/${client._id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          nombres: editForm.nombre,
+          apellidos: editForm.apellidos,
+          telefono: editForm.telefono,
+          documento: editForm.documento,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(data.message || "No se pudo guardar el perfil.");
+        return;
+      }
+      const updated = mapServerCliente(data);
+      setClient(updated);
+      setEditForm(updated);
+      localStorage.setItem("cliente_actual", JSON.stringify(updated));
+      setEditing(false);
+      alert("Perfil actualizado en el servidor.");
+    } catch (e) {
+      console.error(e);
+      alert("Error de conexión con el servidor.");
+    }
   };
 
-  const handleChangePassword = () => {
+  const handleChangePassword = async () => {
     if (passwordData.new !== passwordData.confirm) {
       alert("Las nuevas contraseñas no coinciden");
       return;
     }
-    const updatedClient = { ...client, password: passwordData.new };
-    localStorage.setItem("cliente_actual", JSON.stringify(updatedClient));
-    setClient(updatedClient);
-    setShowChangePassword(false);
-    setPasswordData({ current: "", new: "", confirm: "" });
-    alert("Contraseña actualizada correctamente");
+    if (!client?._id) {
+      alert("Inicia sesión de nuevo para poder cambiar la contraseña en el servidor.");
+      return;
+    }
+    try {
+      const res = await fetch(`${API_URL_CLIENTES}/${client._id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          currentPassword: passwordData.current,
+          newPassword: passwordData.new,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(data.message || "No se pudo cambiar la contraseña.");
+        return;
+      }
+      const updated = mapServerCliente(data);
+      setClient(updated);
+      localStorage.setItem("cliente_actual", JSON.stringify(updated));
+      setShowChangePassword(false);
+      setPasswordData({ current: "", new: "", confirm: "" });
+      alert("Contraseña actualizada en el servidor.");
+    } catch (e) {
+      console.error(e);
+      alert("Error de conexión con el servidor.");
+    }
   };
 
   if (loading) {
@@ -173,6 +249,12 @@ const ClientProfilePage = () => {
       case "Cancelado": return "bg-red-100 text-red-700";
       default: return "bg-gray-100 text-gray-700";
     }
+  };
+
+  const etiquetaOrigenPedido = (order) => {
+    if (order.origen === "CAJA") return "Caja registradora";
+    if (order.origen === "ONLINE") return "Pedido web";
+    return "Sin indicar";
   };
 
   const renderPerfil = () => (
@@ -270,6 +352,19 @@ const ClientProfilePage = () => {
                     Pedido #{order.numeroVenta || orders.length - index}
                   </p>
                   <p className="text-xs text-gray-400 mt-0.5">{formatDate(order.fecha || order.date)}</p>
+                  <p className="text-xs mt-1">
+                    <span
+                      className={`font-semibold px-2 py-0.5 rounded-full ${
+                        order.origen === "CAJA"
+                          ? "bg-teal-100 text-teal-800"
+                          : order.origen === "ONLINE"
+                            ? "bg-sky-100 text-sky-800"
+                            : "bg-gray-100 text-gray-600"
+                      }`}
+                    >
+                      {etiquetaOrigenPedido(order)}
+                    </span>
+                  </p>
                 </div>
                 <div className="text-right">
                   <span className={`text-xs font-semibold px-3 py-1 rounded-full ${getEstadoColor(order.estado || "Pendiente")}`}>
@@ -324,15 +419,30 @@ const ClientProfilePage = () => {
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Contraseña actual</label>
-            <input type="password" className="w-full rounded-xl border border-gray-200 px-4 py-2" value={passwordData.current} onChange={(e) => setPasswordData({...passwordData, current: e.target.value})} />
+            <PasswordInput
+              placeholder="Ingrese su contraseña actual"
+              value={passwordData.current}
+              onChange={(e) => setPasswordData({ ...passwordData, current: e.target.value })}
+              autoComplete="current-password"
+            />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Nueva contraseña</label>
-            <input type="password" className="w-full rounded-xl border border-gray-200 px-4 py-2" value={passwordData.new} onChange={(e) => setPasswordData({...passwordData, new: e.target.value})} />
+            <PasswordInput
+              placeholder="Ingrese su nueva contraseña"
+              value={passwordData.new}
+              onChange={(e) => setPasswordData({ ...passwordData, new: e.target.value })}
+              autoComplete="new-password"
+            />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Confirmar nueva contraseña</label>
-            <input type="password" className="w-full rounded-xl border border-gray-200 px-4 py-2" value={passwordData.confirm} onChange={(e) => setPasswordData({...passwordData, confirm: e.target.value})} />
+            <PasswordInput
+              placeholder="Repita la nueva contraseña"
+              value={passwordData.confirm}
+              onChange={(e) => setPasswordData({ ...passwordData, confirm: e.target.value })}
+              autoComplete="new-password"
+            />
           </div>
           <div className="flex gap-3 pt-4">
             <button onClick={() => setShowChangePassword(false)} className="px-6 py-2 rounded-full border border-gray-300 text-gray-600 font-semibold">Cancelar</button>
