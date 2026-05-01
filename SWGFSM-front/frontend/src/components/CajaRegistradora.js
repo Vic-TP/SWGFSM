@@ -7,6 +7,16 @@ const API_URL_VENTAS = "http://localhost:5000/api/ventas";
 const API_URL_CLIENTES = "http://localhost:5000/api/clientes";
 const BUSQUEDA_DEBOUNCE_MS = 280;
 
+const normText = (v) =>
+  String(v || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+
+const nombreCompletoCliente = (c) =>
+  `${String(c?.nombres || "").trim()} ${String(c?.apellidos || "").trim()}`.trim();
+
 const idProducto = (v) => {
   if (v == null) return "";
   if (typeof v === "object" && typeof v.toString === "function") return String(v.toString());
@@ -49,12 +59,51 @@ const CajaRegistradora = ({ onVentaCompletada }) => {
   const [buscandoSugerencias, setBuscandoSugerencias] = useState(false);
   const [buscadorEnfocado, setBuscadorEnfocado] = useState(false);
   const [cliente, setCliente] = useState({ nombre: "", email: "", telefono: "", documento: "" });
+  const [clientesIndex, setClientesIndex] = useState([]);
+  const [clienteSugerencias, setClienteSugerencias] = useState([]);
+  const [clienteRegistrado, setClienteRegistrado] = useState(null);
+  const [clienteSugVisible, setClienteSugVisible] = useState(false);
   const [metodoPago, setMetodoPago] = useState("efectivo");
   const [comprobante, setComprobante] = useState("Boleta");
   const [mostrarModalEnvio, setMostrarModalEnvio] = useState(false);
   const [ventaActual, setVentaActual] = useState(null);
   const [tipoEnvio, setTipoEnvio] = useState("email");
   const [destinoEnvio, setDestinoEnvio] = useState("");
+
+  // Cargar clientes (para autocompletado)
+  useEffect(() => {
+    let cancel = false;
+    (async () => {
+      try {
+        const res = await fetch(API_URL_CLIENTES);
+        const data = await res.json().catch(() => []);
+        if (!res.ok) throw new Error(data?.message || `Error al cargar clientes (${res.status})`);
+        const list = Array.isArray(data) ? data : [];
+        const indexed = list
+          .filter((c) => String(c?.estado || "ACTIVO").toUpperCase() === "ACTIVO")
+          .map((c) => {
+            const correo = String(c?.correo || "").trim().toLowerCase();
+            const tel = String(c?.telefono || "").trim();
+            const full = nombreCompletoCliente(c);
+            return {
+              raw: c,
+              id: String(c?._id || correo || tel || full),
+              full,
+              correo,
+              tel,
+              fullNorm: normText(full),
+              correoNorm: normText(correo),
+            };
+          });
+        if (!cancel) setClientesIndex(indexed);
+      } catch (e) {
+        console.warn("No se pudo cargar clientes:", e);
+      }
+    })();
+    return () => {
+      cancel = true;
+    };
+  }, []);
 
   // Cargar productos
   useEffect(() => {
@@ -500,7 +549,7 @@ const CajaRegistradora = ({ onVentaCompletada }) => {
                   )}
                   {!buscandoSugerencias &&
                     productosFiltrados.map((producto) => (
-                      <li key={producto._id} role="option">
+                      <li key={producto._id} role="option" aria-selected="false">
                         <button
                           type="button"
                           disabled={stockDisponible(producto) <= 0}
@@ -611,33 +660,129 @@ const CajaRegistradora = ({ onVentaCompletada }) => {
           <div className="bg-white rounded-2xl p-5 shadow-sm">
             <h2 className="font-bold text-gray-800 mb-3">Datos del cliente</h2>
             <div className="space-y-2">
-              <input
-                type="text"
-                placeholder="Nombre completo *"
-                className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm"
-                value={cliente.nombre}
-                onChange={(e) => setCliente({...cliente, nombre: e.target.value})}
-              />
+              {clienteRegistrado && (
+                <div className="mb-2 flex items-center justify-between gap-2 bg-emerald-50 border border-emerald-100 rounded-xl px-3 py-2">
+                  <p className="text-xs font-semibold text-emerald-700">
+                    USUARIO REGISTRADO
+                  </p>
+                  <p className="text-[11px] text-emerald-700 truncate">
+                    {clienteRegistrado.full}
+                  </p>
+                </div>
+              )}
+
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="Nombre completo *"
+                  className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm bg-emerald-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-200"
+                  value={cliente.nombre}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setCliente({ ...cliente, nombre: v });
+                    const q = normText(v);
+                    if (!q || q.length < 2) {
+                      setClienteSugerencias([]);
+                      setClienteRegistrado(null);
+                      setClienteSugVisible(false);
+                      return;
+                    }
+                    const sug = clientesIndex
+                      .filter((c) => c.fullNorm.includes(q) || c.correoNorm.includes(q))
+                      .slice(0, 6);
+                    setClienteSugerencias(sug);
+                    const exact = clientesIndex.find((c) => c.fullNorm === q);
+                    setClienteRegistrado(exact || null);
+                    setClienteSugVisible(sug.length > 0);
+                  }}
+                  onFocus={() => {
+                    if (clienteSugerencias.length > 0) setClienteSugVisible(true);
+                  }}
+                  onBlur={() => {
+                    // Pequeño delay para permitir click en sugerencia
+                    setTimeout(() => setClienteSugVisible(false), 140);
+                  }}
+                />
+
+                {clienteSugVisible && clienteSugerencias.length > 0 && (
+                  <div className="absolute z-20 mt-2 w-full bg-white border border-gray-100 rounded-xl shadow-lg overflow-hidden">
+                    {clienteSugerencias.map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        className="w-full text-left px-3 py-2 hover:bg-emerald-50 transition"
+                        onMouseDown={(ev) => ev.preventDefault()}
+                        onClick={() => {
+                          const correo = c.correo || "";
+                          const tel = c.tel || "";
+                          setCliente({
+                            ...cliente,
+                            nombre: c.full,
+                            email: correo,
+                            telefono: tel,
+                            documento: String(c.raw?.documento || ""),
+                          });
+                          setClienteRegistrado(c);
+                          setClienteSugVisible(false);
+                        }}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold text-gray-900 truncate">{c.full}</p>
+                            <p className="text-[11px] text-gray-500 truncate">
+                              {c.correo ? c.correo : (c.tel ? `Tel: ${c.tel}` : "—")}
+                            </p>
+                          </div>
+                          <span className="text-[10px] font-semibold text-emerald-700 shrink-0">
+                            REGISTRADO
+                          </span>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
               <input
                 type="email"
                 placeholder="Correo electrónico (para boleta)"
-                className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm"
+                className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm bg-emerald-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-200"
                 value={cliente.email}
-                onChange={(e) => setCliente({...cliente, email: e.target.value})}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setCliente({ ...cliente, email: v });
+                  const q = normText(v);
+                  if (!q || q.length < 3) {
+                    setClienteRegistrado(null);
+                    return;
+                  }
+                  const exact = clientesIndex.find((c) => c.correoNorm === q);
+                  if (exact) {
+                    setClienteRegistrado(exact);
+                    setCliente({
+                      ...cliente,
+                      nombre: exact.full,
+                      email: exact.correo || v,
+                      telefono: exact.tel || "",
+                      documento: String(exact.raw?.documento || ""),
+                    });
+                  } else {
+                    setClienteRegistrado(null);
+                  }
+                }}
               />
               <input
                 type="tel"
                 placeholder="Teléfono / WhatsApp"
-                className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm"
+                className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm bg-emerald-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-200"
                 value={cliente.telefono}
-                onChange={(e) => setCliente({...cliente, telefono: e.target.value})}
+                onChange={(e) => setCliente({ ...cliente, telefono: e.target.value })}
               />
               <input
                 type="text"
                 placeholder="Documento (DNI/RUC) - opcional"
-                className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm"
+                className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm bg-emerald-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-200"
                 value={cliente.documento}
-                onChange={(e) => setCliente({...cliente, documento: e.target.value})}
+                onChange={(e) => setCliente({ ...cliente, documento: e.target.value })}
               />
             </div>
           </div>

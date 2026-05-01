@@ -49,6 +49,32 @@ const normalizarProductos = (lista) =>
       rating: 5,
     }));
 
+/** Pin de ubicación: gota roja, círculo blanco y base ovalada. */
+const IconoPinEntrega = () => (
+  <svg
+    width="32"
+    height="42"
+    viewBox="0 0 24 36"
+    className="shrink-0 text-red-600 block"
+    aria-hidden
+  >
+    <ellipse cx="12" cy="32" rx="5" ry="2" fill="currentColor" />
+    <path
+      fill="currentColor"
+      d="M12 0C5.38 0 0 5.12 0 11.5 0 17.75 12 28 12 28S24 17.5 24 11.5C24 5.12 18.62 0 12 0z"
+    />
+    <circle cx="12" cy="10.5" r="3.2" fill="#ffffff" />
+  </svg>
+);
+
+const LINEAS_METROPOLITANO_ENTREGA = [
+  "ESTACION CAQUETA",
+  "ESTACION UNI",
+  "ESTACION TACNA",
+  "ESTACION JIRON DE LA UNION",
+  "ESTACION CENTRAL",
+];
+
 const HomePage = () => {
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [cartItems, setCartItems] = useState([]);
@@ -586,9 +612,8 @@ const HomePage = () => {
 
       <section className="py-16 border-t border-gray-100">
         <div className="max-w-7xl mx-auto px-6">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-8 text-center">
             {[
-              { icon: "📦", title: "Envío a domicilio", desc: "Entregas rápidas" },
               { icon: "🥑", title: "Producto fresco", desc: "Directo del campo" },
               { icon: "💰", title: "Mejor precio", desc: "Sin IGV" },
               { icon: "✅", title: "Calidad garantizada", desc: "Selección premium" },
@@ -599,6 +624,30 @@ const HomePage = () => {
                 <p className="text-gray-400 text-xs">{item.desc}</p>
               </div>
             ))}
+          </div>
+
+          <div className="mt-14 pt-12 border-t border-neutral-200 bg-white">
+            <div className="text-center text-black uppercase">
+              <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight">
+                PUNTOS DE ENTREGA
+              </h2>
+              <p className="text-lg sm:text-xl md:text-2xl font-bold mt-2 md:mt-3">
+                ESTACION METROPOLITANO
+              </p>
+            </div>
+            <ul className="mt-10 md:mt-12 flex flex-row flex-nowrap items-start justify-between gap-2 sm:gap-3 md:gap-4 max-w-6xl mx-auto px-2 overflow-x-auto overscroll-x-contain pb-2 [scrollbar-width:thin] md:overflow-visible">
+              {LINEAS_METROPOLITANO_ENTREGA.map((linea) => (
+                <li
+                  key={linea}
+                  className="flex flex-col items-center text-center shrink-0 w-[19vw] min-w-[88px] max-w-[170px] md:shrink md:w-auto md:min-w-0 md:flex-1 md:max-w-[200px]"
+                >
+                  <IconoPinEntrega />
+                  <span className="mt-2 px-0.5 font-bold text-black text-[9px] sm:text-[10px] md:text-xs lg:text-sm uppercase tracking-wide leading-tight">
+                    {linea}
+                  </span>
+                </li>
+              ))}
+            </ul>
           </div>
         </div>
       </section>
