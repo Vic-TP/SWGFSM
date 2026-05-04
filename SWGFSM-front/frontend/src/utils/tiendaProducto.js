@@ -40,3 +40,29 @@ export const imagenCatalogo = (p, defaults) => {
   if (t.includes("pack") || t.includes("variad")) return defaults.variadas;
   return defaults.variadas;
 };
+
+const MAX_DESCRIPCION_CORTA = 110;
+
+const TEXTO_CORTO_POR_CATEGORIA = {
+  hass: "Palta Hass: pulpa cremosa, excelente para guacamole y tostadas.",
+  fuerte: "Palta Fuerte: sabor marcado y fruta firme, ideal para ensaladas.",
+  naval: "Palta Naval: jugosa y aromática, perfecta para consumo fresco.",
+  selva: "Palta de selva: variedad regional, frescura directa del productor.",
+  packs: "Selección variada en un solo pedido, pensada para la familia.",
+  premium: "Selección premium: calidad extra y presentación cuidada.",
+  gigante: "Tamaño generoso, ideal para compartir o preparaciones grandes.",
+  otros: "Palta fresca seleccionada, lista para llevar a tu mesa.",
+};
+
+/**
+ * Texto breve para tarjetas del catálogo: recorta detalle/descripción o usa un default por variedad.
+ */
+export const descripcionCortaTarjeta = (p) => {
+  const full = String((p?.detalle || p?.descripcion || "").trim()).replace(/\s+/g, " ");
+  if (full) {
+    if (full.length <= MAX_DESCRIPCION_CORTA) return full;
+    return `${full.slice(0, MAX_DESCRIPCION_CORTA - 1).trim()}…`;
+  }
+  const cat = categoriaCatalogo(p);
+  return TEXTO_CORTO_POR_CATEGORIA[cat] || TEXTO_CORTO_POR_CATEGORIA.otros;
+};

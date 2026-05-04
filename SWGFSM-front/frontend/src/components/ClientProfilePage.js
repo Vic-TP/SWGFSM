@@ -72,10 +72,20 @@ const ClientProfilePage = () => {
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [passwordData, setPasswordData] = useState({ current: "", new: "", confirm: "" });
   const [loading, setLoading] = useState(true);
+  const [detailOrder, setDetailOrder] = useState(null);
 
   useEffect(() => {
     loadClientAndOrders();
   }, []);
+
+  useEffect(() => {
+    if (!detailOrder) return;
+    const onKey = (e) => {
+      if (e.key === "Escape") setDetailOrder(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [detailOrder]);
 
   const loadClientAndOrders = async () => {
     try {
@@ -257,6 +267,24 @@ const ClientProfilePage = () => {
     return "Sin indicar";
   };
 
+  const etiquetaMetodoPago = (m) => {
+    const map = {
+      tarjeta: "Tarjeta",
+      yape: "Yape",
+      plin: "Plin",
+      transferencia: "Transferencia",
+      efectivo: "Efectivo",
+    };
+    return map[String(m || "").toLowerCase()] || m || "—";
+  };
+
+  const lineaSubtotal = (item) => {
+    if (item.subtotal != null && Number.isFinite(Number(item.subtotal))) return Number(item.subtotal);
+    const pu = Number(item.precioUnitario ?? item.price ?? 0);
+    const q = Number(item.cantidad ?? item.quantity ?? 0);
+    return pu * q;
+  };
+
   const renderPerfil = () => (
     <div>
       <h2 className="text-2xl font-bold text-emerald-900 mb-1">Mis Datos</h2>
@@ -345,7 +373,12 @@ const ClientProfilePage = () => {
         <p className="text-sm text-gray-400 mb-5">{orders.length} pedido(s) realizados.</p>
         <div className="space-y-4">
           {[...orders].reverse().map((order, index) => (
-            <div key={order._id || index} className="border border-lime-200 rounded-2xl p-5 bg-white hover:shadow-md transition">
+            <button
+              key={order._id || index}
+              type="button"
+              onClick={() => setDetailOrder(order)}
+              className="w-full text-left border border-lime-200 rounded-2xl p-5 bg-white hover:shadow-md hover:border-emerald-300 transition cursor-pointer focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:ring-offset-2"
+            >
               <div className="flex justify-between items-start mb-3">
                 <div>
                   <p className="text-sm font-bold text-emerald-900">
@@ -376,12 +409,15 @@ const ClientProfilePage = () => {
               <div className="border-t border-lime-200 pt-3 space-y-1">
                 {(order.productos || order.items || []).map((item, idx) => (
                   <div key={idx} className="flex justify-between text-xs text-gray-600">
-                    <span>{item.nombre || item.name} ({item.medida || item.measure}) x{item.cantidad || item.quantity}</span>
-                    <span className="font-semibold">S/ {((item.precioUnitario || item.price) * (item.cantidad || item.quantity)).toFixed(2)}</span>
+                    <span>
+                      {item.nombre || item.name} ({item.medida || item.measure}) x{item.cantidad || item.quantity}
+                    </span>
+                    <span className="font-semibold">S/ {lineaSubtotal(item).toFixed(2)}</span>
                   </div>
                 ))}
               </div>
-            </div>
+              <p className="text-xs text-emerald-600 font-semibold mt-3">Toca para ver el detalle completo →</p>
+            </button>
           ))}
         </div>
       </div>
@@ -506,6 +542,129 @@ const ClientProfilePage = () => {
           </section>
         </div>
       </main>
+
+      {detailOrder && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/45 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="pedido-detail-title"
+          onClick={() => setDetailOrder(null)}
+        >
+          <div
+            className="relative w-full max-w-lg rounded-2xl bg-white shadow-2xl max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="sticky top-0 flex items-start justify-between gap-3 border-b border-gray-100 bg-emerald-50/90 px-5 py-4 backdrop-blur-sm">
+              <div>
+                <h3 id="pedido-detail-title" className="text-lg font-bold text-emerald-900">
+                  Pedido #{detailOrder.numeroVenta || "—"}
+                </h3>
+                <p className="text-xs text-gray-600 mt-0.5">{formatDate(detailOrder.fecha || detailOrder.date)}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDetailOrder(null)}
+                className="shrink-0 rounded-full p-1.5 text-gray-500 hover:bg-white hover:text-gray-800"
+                aria-label="Cerrar detalle"
+              >
+                <span className="text-2xl leading-none">&times;</span>
+              </button>
+            </div>
+
+            <div className="space-y-4 p-5">
+              <div className="flex flex-wrap gap-2">
+                <span className={`text-xs font-semibold px-3 py-1 rounded-full ${getEstadoColor(detailOrder.estado || "Pendiente")}`}>
+                  {detailOrder.estado || "Pendiente"}
+                </span>
+                <span
+                  className={`text-xs font-semibold px-3 py-1 rounded-full ${
+                    detailOrder.origen === "CAJA"
+                      ? "bg-teal-100 text-teal-800"
+                      : detailOrder.origen === "ONLINE"
+                        ? "bg-sky-100 text-sky-800"
+                        : "bg-gray-100 text-gray-600"
+                  }`}
+                >
+                  {etiquetaOrigenPedido(detailOrder)}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                <div className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2">
+                  <p className="text-xs text-gray-500">Cliente</p>
+                  <p className="font-semibold text-gray-900">{detailOrder.cliente || "—"}</p>
+                </div>
+                <div className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2">
+                  <p className="text-xs text-gray-500">Correo</p>
+                  <p className="font-semibold text-gray-900 break-all">{detailOrder.clienteEmail || "—"}</p>
+                </div>
+                <div className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2">
+                  <p className="text-xs text-gray-500">Teléfono</p>
+                  <p className="font-semibold text-gray-900">{detailOrder.clienteTelefono || "—"}</p>
+                </div>
+                <div className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2">
+                  <p className="text-xs text-gray-500">Método de pago</p>
+                  <p className="font-semibold text-gray-900">{etiquetaMetodoPago(detailOrder.metodoPago)}</p>
+                </div>
+                <div className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2 sm:col-span-2">
+                  <p className="text-xs text-gray-500">Comprobante</p>
+                  <p className="font-semibold text-gray-900">{detailOrder.comprobante || "Boleta"}</p>
+                </div>
+              </div>
+
+              <div>
+                <p className="text-sm font-bold text-gray-900 mb-2">Productos</p>
+                <div className="overflow-hidden rounded-xl border border-gray-200">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50 text-left text-xs uppercase text-gray-500">
+                      <tr>
+                        <th className="px-3 py-2 font-semibold">Producto</th>
+                        <th className="px-3 py-2 font-semibold">Medida</th>
+                        <th className="px-3 py-2 font-semibold text-right">Cant.</th>
+                        <th className="px-3 py-2 font-semibold text-right">P. unit.</th>
+                        <th className="px-3 py-2 font-semibold text-right">Subtotal</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(detailOrder.productos || detailOrder.items || []).map((item, idx) => (
+                        <tr key={idx} className="border-t border-gray-100">
+                          <td className="px-3 py-2 text-gray-800">{item.nombre || item.name}</td>
+                          <td className="px-3 py-2 text-gray-600">{item.medida || item.measure || "1kg"}</td>
+                          <td className="px-3 py-2 text-right tabular-nums">{item.cantidad ?? item.quantity}</td>
+                          <td className="px-3 py-2 text-right tabular-nums">
+                            S/ {Number(item.precioUnitario ?? item.price ?? 0).toFixed(2)}
+                          </td>
+                          <td className="px-3 py-2 text-right font-semibold text-emerald-800 tabular-nums">
+                            S/ {lineaSubtotal(item).toFixed(2)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="flex justify-between items-center border-t border-gray-200 pt-4 text-sm">
+                <span className="text-gray-600">Subtotal</span>
+                <span className="font-semibold text-gray-900">S/ {Number(detailOrder.subtotal ?? detailOrder.total ?? 0).toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between items-center text-lg">
+                <span className="font-bold text-gray-900">Total</span>
+                <span className="font-extrabold text-emerald-800">S/ {Number(detailOrder.total || 0).toFixed(2)}</span>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setDetailOrder(null)}
+                className="w-full rounded-full bg-emerald-600 py-3 text-sm font-semibold text-white hover:bg-emerald-700"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showLogout && <LogoutModal onConfirm={confirmLogout} onCancel={() => setShowLogout(false)} />}
     </div>

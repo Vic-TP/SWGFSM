@@ -45,6 +45,8 @@ const proveedorRoutes = require('./routes/proveedorRoutes');
 const clienteRoutes = require('./routes/clienteRoutes');
 const empleadoRoutes = require('./routes/empleadoRoutes');
 const prediccionRoutes = require('./routes/prediccion'); // Nueva ruta de ML
+const pagoSimuladoRoutes = require('./routes/pagoSimuladoRoutes');
+const tareaRoutes = require('./routes/tareaRoutes');
 
 // --- Definición de Endpoints ---
 app.use('/api/producto', productoRoutes);
@@ -54,6 +56,8 @@ app.use('/api/proveedores', proveedorRoutes);
 app.use('/api/clientes', clienteRoutes);
 app.use('/api/empleados', empleadoRoutes);
 app.use('/api/prediccion', prediccionRoutes); // Endpoint para las predicciones
+app.use('/api/pago-simulado', pagoSimuladoRoutes); // Simulador de pasarela (sin PSP real)
+app.use('/api/tareas', tareaRoutes);
 
 // Ruta de prueba
 app.get('/api/test', (req, res) => {
