@@ -16,11 +16,11 @@ const estimatePh = (dias, tamano, tipo) => {
 };
 
 const INVENTARIO_DEMO = [
-  { fecha: "2026-04-10", proveedor: "Proveedor A", puesto: "A1", producto: "Palta Hass",     tipo: "Exportación", tamano: "Grande",  detalle: "Lote premium",        cant: 50, precio: 2.5, pago: "Contado" },
-  { fecha: "2026-04-09", proveedor: "Proveedor B", puesto: "B2", producto: "Palta Fuerte",   tipo: "Local",       tamano: "Mediano", detalle: "Lote regular",        cant: 30, precio: 1.8, pago: "Crédito" },
-  { fecha: "2026-04-12", proveedor: "Proveedor C", puesto: "C1", producto: "Palta Criolla",  tipo: "Orgánico",    tamano: "Pequeño", detalle: "Certificado org.",    cant: 20, precio: 3.2, pago: "Contado" },
-  { fecha: "2026-04-06", proveedor: "Proveedor A", puesto: "A2", producto: "Palta Bacon",    tipo: "Exportación", tamano: "Grande",  detalle: "Calibre 22",          cant: 45, precio: 2.1, pago: "Contado" },
-  { fecha: "2026-04-03", proveedor: "Proveedor D", puesto: "D1", producto: "Palta Ettinger", tipo: "Exportación", tamano: "Grande",  detalle: "Exportación directa", cant: 35, precio: 2.8, pago: "Crédito" },
+  { fecha: "2026-04-28", proveedor: "Proveedor A", puesto: "A1", producto: "Palta Hass",     tipo: "Exportación", tamano: "Grande",  detalle: "Lote premium",        cant: 50, precio: 2.5, pago: "Contado" },
+  { fecha: "2026-04-25", proveedor: "Proveedor B", puesto: "B2", producto: "Palta Fuerte",   tipo: "Local",       tamano: "Mediano", detalle: "Lote regular",        cant: 30, precio: 1.8, pago: "Crédito" },
+  { fecha: "2026-04-24", proveedor: "Proveedor C", puesto: "C1", producto: "Palta Criolla",  tipo: "Orgánico",    tamano: "Pequeño", detalle: "Certificado org.",    cant: 20, precio: 3.2, pago: "Contado" },
+  { fecha: "2026-04-23", proveedor: "Proveedor A", puesto: "A2", producto: "Palta Bacon",    tipo: "Exportación", tamano: "Grande",  detalle: "Calibre 22",          cant: 45, precio: 2.1, pago: "Contado" },
+  { fecha: "2026-04-22", proveedor: "Proveedor D", puesto: "D1", producto: "Palta Ettinger", tipo: "Exportación", tamano: "Grande",  detalle: "Exportación directa", cant: 35, precio: 2.8, pago: "Crédito" },
 ];
 
 const PRODUCTOS_CATALOGO = [
