@@ -44,18 +44,20 @@ const Header = ({ onCartClick, cartCount, client }) => {
             </span>
           </button>
 
-          {/* Separador */}
-          <div className="w-px h-6 bg-lime-300" />
+          {/* Solo invitados: enlace a login de empleados (los clientes no ven esta opción) */}
+          {!client && (
+            <>
+              <div className="w-px h-6 bg-lime-300" />
+              <button
+                type="button"
+                onClick={handleAdminClick}
+                className="text-xs font-semibold text-emerald-800 px-3 py-2 rounded-xl hover:bg-lime-100 transition"
+              >
+                Acceso trabajador
+              </button>
+            </>
+          )}
 
-          {/* Botón Admin */}
-          <button
-            onClick={handleAdminClick}
-            className="text-xs font-semibold text-emerald-800 px-3 py-2 rounded-xl hover:bg-lime-100 transition"
-          >
-            Acceso trabajador
-          </button>
-
-          {/* Separador */}
           <div className="w-px h-6 bg-lime-300" />
 
           {/* Botón Carrito */}
