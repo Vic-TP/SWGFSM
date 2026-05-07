@@ -19,11 +19,24 @@ const Header = ({ onCartClick, cartCount, client }) => {
     <header className="bg-lime-300 py-5 px-8 flex items-center justify-between shadow-md">
       {/* Logo / Título */}
       <div>
-        <h1 className="text-4xl md:text-5xl font-extrabold text-emerald-900 leading-tight tracking-wide">
-          FRUTERIA SEÑOR DE
-          <br />
-          MURUHUAY
-        </h1>
+        <div className="relative inline-block">
+          <div
+            className="absolute -inset-x-5 -inset-y-3 rounded-[2rem] bg-white/45 blur-[1px]"
+            aria-hidden
+          />
+          <h1 className="relative leading-[0.95]">
+            <span className="block text-sm md:text-base font-extrabold tracking-[0.38em] text-emerald-900/80 uppercase">
+              Frutería Señor de
+            </span>
+            <span className="block mt-2 text-6xl md:text-7xl lg:text-8xl font-black tracking-tight text-emerald-950">
+              Muruhuay
+            </span>
+            <span
+              className="mt-4 block h-2 w-40 md:w-56 rounded-full bg-gradient-to-r from-emerald-800 via-emerald-600 to-lime-500"
+              aria-hidden
+            />
+          </h1>
+        </div>
       </div>
 
       {/* Acciones */}

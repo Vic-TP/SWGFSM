@@ -15,6 +15,11 @@ import paltaSelva from "../assets/palta-selva.png";
 import paltasVariadas from "../assets/paltas.png";
 import logoPaltas from "../assets/logopaltasinterior.png";
 import infoNutri from "../assets/info_nutri.png";
+import procesoChacra from "../assets/proceso/chacra.png";
+import procesoCosecha from "../assets/proceso/cosecha.png";
+import procesoTraslado from "../assets/proceso/traslado.png";
+import procesoClasificacion from "../assets/proceso/clasificacion.png";
+import procesoLocal from "../assets/proceso/local.png";
 
 const API_URL_PRODUCTOS = "http://localhost:5000/api/producto";
 const API_URL_VENTAS = "http://localhost:5000/api/ventas";
@@ -519,8 +524,8 @@ const HomePage = () => {
         <div className="mx-auto max-w-7xl px-6">
           <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-12 items-center">
             <div className="text-center lg:text-left">
-              <span className="inline-flex items-center gap-2 bg-emerald-100 rounded-full px-5 py-2">
-                <span className="text-emerald-700 text-base font-semibold">Modo saludable</span>
+              <span className="inline-flex items-center gap-2 bg-emerald-100 rounded-full px-7 py-3 border border-emerald-200/70 shadow-sm">
+                <span className="text-emerald-800 text-lg font-bold">Modo saludable</span>
               </span>
               <h2 className="mt-5 text-4xl lg:text-5xl font-extrabold text-slate-900">
                 Beneficios de la palta
@@ -528,6 +533,16 @@ const HomePage = () => {
               <p className="mt-4 text-lg text-slate-600 max-w-2xl mx-auto lg:mx-0">
                 Información rápida para que incluyas la palta en tus comidas diarias.
               </p>
+              <div className="mt-7 flex justify-center lg:justify-start">
+                <button
+                  type="button"
+                  onClick={() => (window.location.href = "/recetas-palta")}
+                  className="inline-flex items-center justify-center gap-2 rounded-full bg-emerald-700 px-7 py-3 text-base font-semibold text-white shadow-lg transition hover:bg-emerald-800 hover:shadow-xl"
+                >
+                  <span>Mira las recetas con palta</span>
+                  <span aria-hidden>→</span>
+                </button>
+              </div>
             </div>
 
             <div className="flex justify-center lg:justify-end">
@@ -692,6 +707,101 @@ const HomePage = () => {
                 </div>
               );
             })}
+          </div>
+        </div>
+      </section>
+
+      <section className="relative overflow-hidden bg-white py-16 lg:py-24">
+        <div className="absolute inset-0 bg-gradient-to-b from-white via-emerald-50/40 to-white" />
+        <div className="relative mx-auto max-w-7xl px-6">
+          <div className="mx-auto max-w-3xl text-center">
+            <span className="inline-flex items-center gap-2 rounded-full bg-emerald-100 px-5 py-2">
+              <span className="text-emerald-800 text-sm font-bold tracking-wide uppercase">
+                Del campo a tu mesa
+              </span>
+            </span>
+            <h2 className="mt-5 text-4xl sm:text-5xl font-extrabold tracking-tight text-slate-900">
+              ¿Cómo llega la palta al local?
+            </h2>
+            <p className="mt-4 text-lg text-slate-600">
+              Te mostramos el proceso de cosecha y cuidado para que recibas paltas frescas y de calidad.
+            </p>
+          </div>
+
+          <div className="mt-12 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-5">
+            {[
+              {
+                n: "01",
+                t: "Chacra",
+                d: "Cultivo y cuidado en el campo.",
+                img: procesoChacra,
+              },
+              {
+                n: "02",
+                t: "Cosecha",
+                d: "Selección y recolección en el punto ideal.",
+                img: procesoCosecha,
+              },
+              {
+                n: "03",
+                t: "Traslado",
+                d: "Transporte seguro para mantener frescura.",
+                img: procesoTraslado,
+              },
+              {
+                n: "04",
+                t: "Clasificación",
+                d: "Revisión, pesaje y orden por calidad.",
+                img: procesoClasificacion,
+              },
+              {
+                n: "05",
+                t: "Venta en local",
+                d: "Listas para tu compra en el mercado.",
+                img: procesoLocal,
+              },
+            ].map((step) => (
+              <div
+                key={step.n}
+                className="group overflow-hidden rounded-3xl border border-emerald-100 bg-white shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-xl"
+              >
+                <div className="relative aspect-[4/3] bg-gradient-to-b from-emerald-50 to-white">
+                  <img
+                    src={step.img}
+                    alt={step.t}
+                    className="h-full w-full object-cover"
+                    loading="lazy"
+                  />
+                  <div className="absolute left-4 top-4 rounded-full bg-white/90 px-3 py-1 text-xs font-extrabold text-emerald-800 shadow">
+                    {step.n}
+                  </div>
+                </div>
+                <div className="p-5">
+                  <h3 className="text-base font-extrabold text-slate-900">
+                    {step.t}
+                  </h3>
+                  <p className="mt-2 text-sm text-slate-600 leading-relaxed">
+                    {step.d}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-10 hidden lg:block">
+            <div className="relative mx-auto max-w-6xl">
+              <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-[2px] bg-emerald-200/70" />
+              <div className="grid grid-cols-5 gap-6">
+                {["Chacra", "Cosecha", "Traslado", "Clasificación", "Local"].map((label) => (
+                  <div key={label} className="flex flex-col items-center gap-3">
+                    <div className="h-3 w-3 rounded-full bg-emerald-600 ring-4 ring-emerald-100" />
+                    <span className="text-xs font-bold text-emerald-900 uppercase tracking-wide">
+                      {label}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       </section>

@@ -5,6 +5,7 @@ import LoginPage from "./components/LoginPage";          // login clientes (y le
 import WorkerLoginPage from "./components/WorkerLoginPage";
 import AdminDashboard from "./components/AdminDashboard";
 import ClientProfilePage from "./components/ClientProfilePage"; // perfil cliente (opcional)
+import RecetasPaltaPage from "./components/RecetasPaltaPage";
 
 function App() {
   const path = window.location.pathname;
@@ -27,6 +28,11 @@ function App() {
   // Perfil CLIENTE
   if (path === "/cliente/perfil") {
     return <ClientProfilePage />;
+  }
+
+  // Recetas con palta
+  if (path === "/recetas-palta") {
+    return <RecetasPaltaPage />;
   }
 
   // Página principal
