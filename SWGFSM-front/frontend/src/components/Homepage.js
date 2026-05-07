@@ -238,6 +238,16 @@ const HomePage = () => {
     setIsCartOpen(true);
   };
 
+  const handleRemoveCartItem = (itemToRemove) => {
+    const pid = idProducto(itemToRemove?.productoId ?? itemToRemove?.id);
+    const measure = itemToRemove?.measure ?? "1kg";
+    setCartItems((prev) =>
+      prev.filter(
+        (i) => !(idProducto(i.productoId ?? i.id) === pid && (i.measure ?? "1kg") === measure)
+      )
+    );
+  };
+
   const handleCheckout = () => {
     const logged = localStorage.getItem("cliente_logueado") === "true";
     if (!logged) {
@@ -837,6 +847,7 @@ const HomePage = () => {
         items={cartItems}
         onClose={() => setIsCartOpen(false)}
         onCheckout={handleCheckout}
+        onRemoveItem={handleRemoveCartItem}
         total={cartTotal}
       />
 

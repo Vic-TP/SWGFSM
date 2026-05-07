@@ -2,7 +2,7 @@
 
 import React from "react";
 
-const CartSidebar = ({ isOpen, items, onClose, onCheckout, total }) => {
+const CartSidebar = ({ isOpen, items, onClose, onCheckout, onRemoveItem, total }) => {
   if (!isOpen) return null;
 
   const handlePagarClick = () => {
@@ -53,6 +53,17 @@ const CartSidebar = ({ isOpen, items, onClose, onCheckout, total }) => {
                         ? `${item.cantidadKg ?? item.quantity} kg`
                         : `${item.measure} × ${item.quantity}`}
                     </p>
+                    {typeof onRemoveItem === "function" && (
+                      <button
+                        type="button"
+                        onClick={() => onRemoveItem(item)}
+                        className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-red-600 hover:text-red-700"
+                        title="Eliminar producto"
+                      >
+                        <span aria-hidden>🗑️</span>
+                        <span>Eliminar</span>
+                      </button>
+                    )}
                   </div>
                   <p className="font-bold text-sm text-emerald-800">S/ {(item.price * item.quantity).toFixed(2)}</p>
                 </div>
