@@ -8,25 +8,35 @@ import ProductDetail from "./ProductDetail";
 import PaymentGateway from "./PaymentGateway";
 import { categoriaCatalogo, imagenCatalogo, descripcionCortaTarjeta } from "../utils/tiendaProducto";
 
-import paltaHass from "../assets/palta-hass.png";
+import paltaHassVerde from "../assets/palta-hass-verde.png";
+import paltaHassMadura from "../assets/palta-hass-madura.png";
 import paltaFuerte from "../assets/palta-fuerte.png";
+import paltaFuerteMostrador from "../assets/palta-fuerte-mostrador.png";
 import paltaNaval from "../assets/palta-naval.png";
 import paltaSelva from "../assets/palta-selva.png";
 import paltasVariadas from "../assets/paltas.png";
 import logoPaltas from "../assets/logopaltasinterior.png";
+import paltaHall from "../assets/palta-hall.png";
 import infoNutri from "../assets/info_nutri.png";
 import procesoChacra from "../assets/proceso/chacra.png";
 import procesoCosecha from "../assets/proceso/cosecha.png";
 import procesoTraslado from "../assets/proceso/traslado.png";
 import procesoClasificacion from "../assets/proceso/clasificacion.png";
 import procesoLocal from "../assets/proceso/local.png";
+import iconProductoFresco from "../assets/iconos/producto_fresco.png";
+import iconMejorPrecio from "../assets/iconos/mejor_precio.png";
+import iconCalidad from "../assets/iconos/calidad.png";
 
 const API_URL_PRODUCTOS = "http://localhost:5000/api/producto";
 const API_URL_VENTAS = "http://localhost:5000/api/ventas";
 
 const IMG_DEFAULTS = {
-  hass: paltaHass,
+  hassVerde: paltaHassVerde,
+  hassMadura: paltaHassMadura,
+  hass: paltaHassVerde,
   fuerte: paltaFuerte,
+  fuerteMostrador: paltaFuerteMostrador,
+  hall: paltaHall,
   naval: paltaNaval,
   selva: paltaSelva,
   variadas: paltasVariadas,
@@ -54,18 +64,41 @@ const tituloCatalogo = (s) => {
     .join(" ");
 };
 
+const tituloConTipo = (p) => {
+  const nombre = tituloCatalogo(p?.nombre);
+  const tipo = String(p?.tipo || "").trim();
+  if (!tipo) return nombre;
+  const n = nombre.toLowerCase();
+  const t = tipo.toLowerCase();
+  if (n.includes(t)) return nombre;
+  return `${nombre} ${tituloCatalogo(tipo)}`;
+};
+
 const normalizarProductos = (lista) =>
   lista
     .filter((p) => String(p.estado || "ACTIVO").toUpperCase() !== "INACTIVO")
-    .map((p) => ({
-      ...p,
-      imagen: imagenCatalogo(p, IMG_DEFAULTS),
-      precio: precioNum(p.precioVenta),
-      description: (p.detalle || p.descripcion || "").trim(),
-      descripcionCorta: descripcionCortaTarjeta(p),
-      categoria: categoriaCatalogo(p),
-      rating: 5,
-    }));
+    .map((p) => {
+      const img = imagenCatalogo(p, IMG_DEFAULTS);
+      const nt = `${p?.nombre || ""} ${p?.tipo || ""}`.toLowerCase();
+      const esHass = nt.includes("hass");
+      const esFuerte = nt.includes("fuerte");
+      const imagen =
+        esHass ? IMG_DEFAULTS.hassVerde : esFuerte ? IMG_DEFAULTS.fuerte : img;
+      return {
+        ...p,
+        imagen,
+        imagenesFichaExtra: esHass
+          ? [IMG_DEFAULTS.hassMadura]
+          : esFuerte
+            ? [IMG_DEFAULTS.fuerteMostrador]
+            : [],
+        precio: precioNum(p.precioVenta),
+        description: (p.detalle || p.descripcion || "").trim(),
+        descripcionCorta: descripcionCortaTarjeta(p),
+        categoria: categoriaCatalogo(p),
+        rating: 5,
+      };
+    });
 
 /** Pin de ubicación: gota roja, círculo blanco y base ovalada. */
 const IconoPinEntrega = () => (
@@ -83,6 +116,37 @@ const IconoPinEntrega = () => (
     />
     <circle cx="12" cy="10.5" r="3.2" fill="#ffffff" />
   </svg>
+);
+
+const IconoProductoFresco = () => (
+  <img
+    src={iconProductoFresco}
+    alt=""
+    className="h-14 w-14 rounded-2xl object-cover shadow-sm ring-1 ring-emerald-200/60"
+    loading="lazy"
+  />
+);
+
+const IconoMejorPrecio = () => (
+  <img
+    src={iconMejorPrecio}
+    alt=""
+    className="h-14 w-14 object-contain"
+    style={{
+      filter:
+        "brightness(0) saturate(100%) invert(35%) sepia(92%) saturate(560%) hue-rotate(70deg) brightness(95%) contrast(95%)",
+    }}
+    loading="lazy"
+  />
+);
+
+const IconoCalidad = () => (
+  <img
+    src={iconCalidad}
+    alt=""
+    className="h-14 w-14 object-contain mix-blend-multiply"
+    loading="lazy"
+  />
 );
 
 const LINEAS_METROPOLITANO_ENTREGA = [
@@ -419,7 +483,7 @@ const HomePage = () => {
       },
       {
         slot: 1,
-        img: paltaHass,
+        img: paltaHassVerde,
         etiqueta: "PALTA HASS",
         precioFijo: null,
         product: pickHass,
@@ -595,14 +659,14 @@ const HomePage = () => {
                     )}
                     <img
                       src={product.imagen}
-                      alt={tituloCatalogo(product.nombre)}
+                      alt={tituloConTipo(product)}
                       className="h-full w-full object-contain p-4 transition-transform duration-300 group-hover:scale-[1.04]"
                     />
                   </div>
                   <div className="flex flex-1 flex-col border-t border-emerald-100/80 p-4 sm:p-5">
                     <div className="flex items-start justify-between gap-2">
                       <h3 className="line-clamp-2 text-lg font-bold leading-snug text-slate-900">
-                        {tituloCatalogo(product.nombre)}
+                        {tituloConTipo(product)}
                       </h3>
                       <div className="flex shrink-0 items-center gap-0.5 text-amber-500" aria-hidden>
                         <span className="text-base">★</span>
@@ -732,7 +796,7 @@ const HomePage = () => {
             {[
               {
                 n: "01",
-                t: "Chacra",
+                t: "Sembrío",
                 d: "Cultivo y cuidado en el campo.",
                 img: procesoChacra,
               },
@@ -792,7 +856,7 @@ const HomePage = () => {
             <div className="relative mx-auto max-w-6xl">
               <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-[2px] bg-emerald-200/70" />
               <div className="grid grid-cols-5 gap-6">
-                {["Chacra", "Cosecha", "Traslado", "Clasificación", "Local"].map((label) => (
+                {["Sembrío", "Cosecha", "Traslado", "Clasificación", "Local"].map((label) => (
                   <div key={label} className="flex flex-col items-center gap-3">
                     <div className="h-3 w-3 rounded-full bg-emerald-600 ring-4 ring-emerald-100" />
                     <span className="text-xs font-bold text-emerald-900 uppercase tracking-wide">
@@ -907,7 +971,7 @@ const HomePage = () => {
                       className="h-28 object-contain group-hover:scale-105 transition duration-300"
                     />
                   </div>
-                  <h3 className="font-semibold text-gray-900 text-sm">{product.nombre}</h3>
+                  <h3 className="font-semibold text-gray-900 text-sm">{tituloConTipo(product)}</h3>
                   <div className="mt-3">
                     <span className="text-xl font-bold text-emerald-600">
                       S/ {product.precio.toFixed(2)}
@@ -932,13 +996,13 @@ const HomePage = () => {
         <div className="max-w-7xl mx-auto px-6">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-8 text-center">
             {[
-              { icon: "🥑", title: "Producto fresco", desc: "Directo del campo" },
-              { icon: "💰", title: "Mejor precio", desc: "Sin IGV" },
-              { icon: "✅", title: "Calidad garantizada", desc: "Selección premium" },
+              { icon: <IconoProductoFresco />, title: "Producto fresco", desc: "Directo del campo" },
+              { icon: <IconoMejorPrecio />, title: "Mejor precio", desc: "Sin IGV" },
+              { icon: <IconoCalidad />, title: "Calidad garantizada", desc: "Selección premium" },
             ].map((item, idx) => (
               <div key={idx}>
-                <div className="text-3xl mb-2">{item.icon}</div>
-                <h3 className="font-semibold text-gray-800 text-sm mb-1">{item.title}</h3>
+                <div className="mb-4 flex justify-center">{item.icon}</div>
+                <h3 className="font-semibold text-gray-800 text-base mb-1">{item.title}</h3>
                 <p className="text-gray-400 text-xs">{item.desc}</p>
               </div>
             ))}

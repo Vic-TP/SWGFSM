@@ -17,6 +17,7 @@ export const categoriaCatalogo = (p) => {
   const t = `${p.tipo || ""} ${p.nombre || ""}`.toLowerCase();
   if (t.includes("pack")) return "packs";
   if (t.includes("premium")) return "premium";
+  if (t.includes("hall")) return "selva";
   if (t.includes("hass")) return "hass";
   if (t.includes("fuerte")) return "fuerte";
   if (t.includes("naval")) return "naval";
@@ -27,13 +28,14 @@ export const categoriaCatalogo = (p) => {
 
 /**
  * Imagen para la tienda: URL en BD si existe; si no, por nombre/tipo.
- * `defaults` = { hass, fuerte, naval, selva, variadas } (imports desde assets)
+ * `defaults` incluye hassVerde / hassMadura (o `hass` apuntando al verde para compat).
  */
 export const imagenCatalogo = (p, defaults) => {
   const u = p?.imagenUrl ?? p?.foto ?? p?.urlImagen;
   if (u != null && String(u).trim() !== "") return String(u).trim();
   const t = `${p?.nombre || ""} ${p?.tipo || ""}`.toLowerCase();
-  if (t.includes("hass")) return defaults.hass;
+  if (t.includes("hall")) return defaults.hall || defaults.variadas;
+  if (t.includes("hass")) return defaults.hassVerde || defaults.hass || defaults.variadas;
   if (t.includes("fuerte")) return defaults.fuerte;
   if (t.includes("naval")) return defaults.naval;
   if (t.includes("selva")) return defaults.selva;

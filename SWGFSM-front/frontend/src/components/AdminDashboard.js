@@ -216,6 +216,8 @@ const AdminDashboard = () => {
     fecha: "", proveedor: "", numeroPuesto: "", producto: "",
     tipo: "", tamano: "", detalle: "", cantidad: "", precioCompra: "", totalInvertido: "",
   });
+  const [modoEditarInventario, setModoEditarInventario] = useState(false);
+  const [inventarioEditId, setInventarioEditId] = useState(null);
 
   const [clientes, setClientes] = useState([]);
   const [empleados, setEmpleados] = useState([]);
@@ -655,11 +657,17 @@ const AdminDashboard = () => {
       fecha: nuevoInventario.fecha ? new Date(nuevoInventario.fecha).toISOString() : undefined
     };
     try {
-      const res = await fetch(API_URL_INVENTARIO, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      const url = modoEditarInventario && inventarioEditId
+        ? `${API_URL_INVENTARIO}/${inventarioEditId}`
+        : API_URL_INVENTARIO;
+      const method = modoEditarInventario && inventarioEditId ? "PUT" : "POST";
+      const res = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       if (res.ok) {
         fetchInventario();
         setShowRegistroInventarioModal(false);
         setNuevoInventario({ fecha: "", proveedor: "", numeroPuesto: "", producto: "", tipo: "", tamano: "", detalle: "", cantidad: "", precioCompra: "", totalInvertido: "" });
+        setModoEditarInventario(false);
+        setInventarioEditId(null);
         alert("Registro guardado.");
       } else {
         let msg = "Error al guardar inventario.";
@@ -667,6 +675,44 @@ const AdminDashboard = () => {
         alert(msg);
       }
     } catch { alert("No se pudo conectar con el servidor."); }
+  };
+
+  const abrirEditarInventario = (inv) => {
+    if (!inv?._id) return;
+    const fechaIso = inv.fecha ? new Date(inv.fecha).toISOString().slice(0, 10) : "";
+    setModoEditarInventario(true);
+    setInventarioEditId(inv._id);
+    setNuevoInventario({
+      fecha: fechaIso,
+      proveedor: inv.proveedor || "",
+      numeroPuesto: inv.numeroPuesto || "",
+      producto: inv.producto || "",
+      tipo: inv.tipo || "",
+      tamano: inv.tamano || "",
+      detalle: inv.detalle || "",
+      cantidad: inv.cantidad ?? "",
+      precioCompra: inv.precioCompra ?? inv.precio ?? "",
+      totalInvertido: inv.totalInvertido ?? inv.pago ?? "",
+    });
+    setShowRegistroInventarioModal(true);
+  };
+
+  const eliminarInventario = async (inv) => {
+    if (!inv?._id) return;
+    if (!window.confirm("¿Eliminar este registro de inventario? Esta acción no se puede deshacer.")) return;
+    try {
+      const res = await fetch(`${API_URL_INVENTARIO}/${inv._id}`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        fetchInventario();
+        alert("Registro eliminado.");
+      } else {
+        alert(data?.message || "No se pudo eliminar el registro.");
+      }
+    } catch (e) {
+      console.error(e);
+      alert("Error de conexión al eliminar.");
+    }
   };
 
   const handleBack   = () => { if (window.opener) window.close(); else window.history.back(); };
@@ -1370,16 +1416,30 @@ const AdminDashboard = () => {
         <div className="bg-white border border-lime-200 rounded-3xl overflow-hidden">
           <div className="px-8 py-4 border-b border-lime-100 flex justify-between items-center">
             <h2 className="font-bold text-emerald-900">Inventario de paltas</h2>
-            <button onClick={() => setShowRegistroInventarioModal(true)} className="px-4 py-2 text-xs font-semibold rounded-full bg-emerald-700 text-lime-50 hover:bg-emerald-800">+ Agregar registro</button>
+            <button
+              onClick={() => {
+                setModoEditarInventario(false);
+                setInventarioEditId(null);
+                setNuevoInventario({ fecha: "", proveedor: "", numeroPuesto: "", producto: "", tipo: "", tamano: "", detalle: "", cantidad: "", precioCompra: "", totalInvertido: "" });
+                setShowRegistroInventarioModal(true);
+              }}
+              className="px-4 py-2 text-xs font-semibold rounded-full bg-emerald-700 text-lime-50 hover:bg-emerald-800"
+            >
+              + Agregar registro
+            </button>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left">
               <thead className="bg-emerald-900 text-lime-50">
-                <tr>{["Fecha","Proveedor","Puesto","Producto","Tipo","Tamaño","Detalle","Cant. (kg)","Precio de compra","Total invertido"].map(h => <th key={h} className="px-4 py-3">{h}</th>)}</tr>
+                <tr>
+                  {["Fecha","Proveedor","Puesto","Producto","Tipo","Tamaño","Detalle","Cant. (kg)","Precio de compra","Total invertido","Acciones"].map(h => (
+                    <th key={h} className="px-4 py-3">{h}</th>
+                  ))}
+                </tr>
               </thead>
               <tbody>
                 {inventario.length === 0
-                  ? <tr><td colSpan="10" className="p-6 text-center text-gray-400">No hay registros de inventario.</td></tr>
+                  ? <tr><td colSpan="11" className="p-6 text-center text-gray-400">No hay registros de inventario.</td></tr>
                   : inventario.map(inv => (
                     <tr key={inv._id} className="border-b hover:bg-lime-50">
                       <td className="px-4 py-2">{inv.fecha ? new Date(inv.fecha).toLocaleDateString() : "—"}</td>
@@ -1392,6 +1452,24 @@ const AdminDashboard = () => {
                       <td className="px-4 py-2 font-bold">{inv.cantidad} kg</td>
                       <td className="px-4 py-2">S/ {inv.precioCompra ?? inv.precio}</td>
                       <td className="px-4 py-2 text-emerald-700 font-bold">S/ {inv.totalInvertido ?? inv.pago}</td>
+                      <td className="px-4 py-2">
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => abrirEditarInventario(inv)}
+                            className="bg-amber-500 hover:bg-amber-600 text-white text-xs font-semibold px-4 py-1.5 rounded-full shadow-sm"
+                          >
+                            Editar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => eliminarInventario(inv)}
+                            className="bg-red-600 hover:bg-red-700 text-white text-xs font-semibold px-4 py-1.5 rounded-full shadow-sm"
+                          >
+                            Eliminar
+                          </button>
+                        </div>
+                      </td>
                     </tr>
                   ))}
               </tbody>
@@ -1402,7 +1480,9 @@ const AdminDashboard = () => {
         {showRegistroInventarioModal && (
           <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40">
             <div className="bg-white rounded-3xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto p-6">
-              <h2 className="text-lg font-bold mb-4 text-emerald-900">Nuevo registro de inventario</h2>
+              <h2 className="text-lg font-bold mb-4 text-emerald-900">
+                {modoEditarInventario ? "Editar registro de inventario" : "Nuevo registro de inventario"}
+              </h2>
               <form onSubmit={handleSubmitInventario} className="grid grid-cols-2 gap-4">
                 <div><label className="block text-xs font-bold mb-1 text-gray-600">Fecha</label><input type="date" name="fecha" className={inp} value={nuevoInventario.fecha} onChange={handleChangeInventario} required /></div>
                 <div className="col-span-2"><label className="block text-xs font-bold mb-1 text-gray-600">Proveedor</label><input type="text" name="proveedor" className={inp} value={nuevoInventario.proveedor} onChange={handleChangeInventario} required /></div>
@@ -1430,8 +1510,20 @@ const AdminDashboard = () => {
                 <div><label className="block text-xs font-bold mb-1 text-gray-600">Precio de compra</label><input type="number" step="0.01" name="precioCompra" className={inp} value={nuevoInventario.precioCompra} onChange={handleChangeInventario} required /></div>
                 <div><label className="block text-xs font-bold mb-1 text-gray-600">Total invertido</label><input type="number" step="0.01" name="totalInvertido" className={inp} value={nuevoInventario.totalInvertido} onChange={handleChangeInventario} required /></div>
                 <div className="col-span-2 flex justify-end gap-3 pt-4 border-t">
-                  <button type="button" onClick={() => setShowRegistroInventarioModal(false)} className="px-4 py-2 rounded-full border border-gray-300 text-gray-600 hover:bg-gray-50">Cancelar</button>
-                  <button type="submit" className="px-4 py-2 rounded-full bg-emerald-700 text-white hover:bg-emerald-800">Guardar</button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowRegistroInventarioModal(false);
+                      setModoEditarInventario(false);
+                      setInventarioEditId(null);
+                    }}
+                    className="px-4 py-2 rounded-full border border-gray-300 text-gray-600 hover:bg-gray-50"
+                  >
+                    Cancelar
+                  </button>
+                  <button type="submit" className="px-4 py-2 rounded-full bg-emerald-700 text-white hover:bg-emerald-800">
+                    {modoEditarInventario ? "Guardar cambios" : "Guardar"}
+                  </button>
                 </div>
               </form>
             </div>
