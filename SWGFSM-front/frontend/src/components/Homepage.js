@@ -14,6 +14,7 @@ import paltaNaval from "../assets/palta-naval.png";
 import paltaSelva from "../assets/palta-selva.png";
 import paltasVariadas from "../assets/paltas.png";
 import logoPaltas from "../assets/logopaltasinterior.png";
+import infoNutri from "../assets/info_nutri.png";
 
 const API_URL_PRODUCTOS = "http://localhost:5000/api/producto";
 const API_URL_VENTAS = "http://localhost:5000/api/ventas";
@@ -509,6 +510,33 @@ const HomePage = () => {
                   className="relative w-80 lg:w-96 drop-shadow-2xl animate-float"
                 />
               </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="border-t border-emerald-100/80 bg-gradient-to-b from-white via-emerald-50/40 to-white py-18 lg:py-24">
+        <div className="mx-auto max-w-7xl px-6">
+          <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-12 items-center">
+            <div className="text-center lg:text-left">
+              <span className="inline-flex items-center gap-2 bg-emerald-100 rounded-full px-5 py-2">
+                <span className="text-emerald-700 text-base font-semibold">Modo saludable</span>
+              </span>
+              <h2 className="mt-5 text-4xl lg:text-5xl font-extrabold text-slate-900">
+                Beneficios de la palta
+              </h2>
+              <p className="mt-4 text-lg text-slate-600 max-w-2xl mx-auto lg:mx-0">
+                Información rápida para que incluyas la palta en tus comidas diarias.
+              </p>
+            </div>
+
+            <div className="flex justify-center lg:justify-end">
+              <img
+                src={infoNutri}
+                alt="Beneficios de la palta"
+                className="w-full max-w-lg rounded-3xl shadow-xl border border-emerald-100 bg-white"
+                loading="lazy"
+              />
             </div>
           </div>
         </div>
