@@ -120,70 +120,42 @@ router.get("/historial", async (req, res) => {
 // Métricas para las tarjetas del dashboard
 router.get("/resumen", async (req, res) => {
   try {
-    // Traer todos los lotes y su última predicción (igual que /inventario)
-    const lotes = await Inventario.find({});
+    // 1. Obtenemos todas las predicciones más recientes directamente
+    // Usamos .lean() para que la consulta sea más rápida
+    const docs = await PrediccionML.find().sort({ fecha: -1 }).lean();
 
-    const activos = await Promise.all(
-      lotes.map(async (lote) => {
-        let pred = await PrediccionML.findOne({ inventarioId: lote._id })
-          .sort({ fecha: -1 });
+    if (!docs || docs.length === 0) {
+      return res.json({
+        ok: true,
+        data: { totalKg: 0, totalRiesgo: 0, totalSazon: 0, diasProm: 0, avgConf: 0, accuracy: null }
+      });
+    }
 
-        // Si no tiene predicción y el modelo está listo, generarla
-        if (!pred && modeloListo()) {
-          try { pred = await predecirYGuardar(lote); } catch (e) { /* ignore */ }
-        }
+    // 2. Cálculos de métricas
+    const totalKg = docs.reduce((s, d) => s + (d.cantidad ?? 0), 0);
+    
+    const totalRiesgo = docs.filter(d => 
+      ["maduro", "punto_negro"].includes(d.estadoML)
+    ).length;
 
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const entrada = new Date(lote.fecha);
-        entrada.setHours(0, 0, 0, 0);
-        const diasAlmacen = Math.max(
-          0,
-          Math.floor((today - entrada) / 86400000)
-        );
+    const totalSazon = docs.filter(d => d.estadoML === "sazon").length;
 
-        const estadoFallback =
-          diasAlmacen >= 7 ? "punto_negro"
-          : diasAlmacen >= 5 ? "maduro"
-          : diasAlmacen >= 3 ? "sazon"
-          : "verde";
+    const diasProm = (docs.reduce((s, d) => s + (d.diasAlmacen ?? 0), 0) / docs.length).toFixed(1);
 
-        const confianzaFallback =
-          diasAlmacen >= 10 || diasAlmacen <= 1 ? 0.95
-          : diasAlmacen >= 7 ? 0.85
-          : diasAlmacen >= 5 ? 0.75
-          : 0.70;
-
-        return {
-          cantidad:    lote.cantidad ?? 0,
-          diasAlmacen,
-          estadoML:   pred?.estadoML  ?? estadoFallback,
-          confianza:  pred?.confianza ?? confianzaFallback,
-        };
-      })
+    const avgConf = Math.round(
+      (docs.reduce((s, d) => s + (d.confianza ?? 0), 0) / docs.length) * 100
     );
 
-    const totalKg     = activos.reduce((s, p) => s + p.cantidad, 0);
-    const totalRiesgo = activos.filter(
-      (p) => p.estadoML === "punto_negro" || p.estadoML === "maduro"
-    ).length;
-    const totalSazon  = activos.filter((p) => p.estadoML === "sazon").length;
-    const diasProm    = activos.length
-      ? (
-          activos.reduce((s, p) => s + p.diasAlmacen, 0) / activos.length
-        ).toFixed(1)
-      : "0";
-    const avgConf     = activos.length
-      ? Math.round(
-          (activos.reduce((s, p) => s + p.confianza, 0) / activos.length) * 100
-        )
-      : null;
+    // 3. Extraer el Accuracy (lo que te faltaba)
+    // Buscamos en los documentos el campo accuracy que viene del modelo de ML
+    const accuracy = docs.find(d => typeof d.accuracy === "number")?.accuracy ?? null;
 
+    // 4. (Opcional) kg por estado si lo sigues necesitando para gráficas
     const kgPorEstado = {};
     ["verde", "sazon", "maduro", "punto_negro"].forEach((e) => {
-      kgPorEstado[e] = activos
-        .filter((p) => p.estadoML === e)
-        .reduce((s, p) => s + p.cantidad, 0);
+      kgPorEstado[e] = docs
+        .filter((d) => d.estadoML === e)
+        .reduce((s, d) => s + (d.cantidad ?? 0), 0);
     });
 
     res.json({
@@ -194,8 +166,9 @@ router.get("/resumen", async (req, res) => {
         totalSazon,
         diasProm,
         avgConf,
+        accuracy, // <-- Aquí está el dato clave
         kgPorEstado,
-        total: activos.length,
+        total: docs.length
       },
     });
   } catch (err) {
