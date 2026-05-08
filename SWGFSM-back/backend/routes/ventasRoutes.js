@@ -24,6 +24,44 @@ const stockDisponibleProducto = (p) => {
   return 0;
 };
 
+const MADUREZ_VALIDAS = new Set(['maduro', 'verde', 'sazon']);
+
+const normalizeMadurez = (v) => {
+  const s = String(v ?? '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+  return MADUREZ_VALIDAS.has(s) ? s : '';
+};
+
+const tieneBucketsPalta = (p) => {
+  if (!p) return false;
+  const sum =
+    Number(p.stockPaltaMadura || 0) +
+    Number(p.stockPaltaVerde || 0) +
+    Number(p.stockPaltaSazon || 0);
+  return Number.isFinite(sum) && sum > 0;
+};
+
+/** Kg disponibles en un bucket (solo si el producto usa stock por madurez). */
+const stockDisponiblePorMadurez = (p, madurez) => {
+  const mNorm = normalizeMadurez(madurez);
+  if (!p || !mNorm) return stockDisponibleProducto(p);
+  if (!tieneBucketsPalta(p)) return stockDisponibleProducto(p);
+  if (mNorm === 'maduro') return Math.max(0, Math.floor(Number(p.stockPaltaMadura) || 0));
+  if (mNorm === 'verde') return Math.max(0, Math.floor(Number(p.stockPaltaVerde) || 0));
+  return Math.max(0, Math.floor(Number(p.stockPaltaSazon) || 0));
+};
+
+const etiquetaMadurezComprobante = (m) => {
+  const x = normalizeMadurez(m);
+  if (x === 'maduro') return 'Maduro';
+  if (x === 'verde') return 'Verde';
+  if (x === 'sazon') return 'Sazón';
+  return '';
+};
+
 /**
  * Descuenta stock en el documento Producto (madura → verde → sazón; si no hay, legacy stockSemanal).
  * No usa ni altera el modelo Inventario.
@@ -75,7 +113,16 @@ const revertirPorLineasProductosLegacy = async (venta) => {
     const s0 = Math.max(0, Number(p.stockPaltaSazon) || 0);
     const paltaSum = m0 + v0 + s0;
     if (paltaSum > 0) {
-      await Producto.updateOne({ _id: id }, { $inc: { stockPaltaMadura: cant } });
+      const mad = normalizeMadurez(item.madurez);
+      if (mad) {
+        const inc = { stockPaltaMadura: 0, stockPaltaVerde: 0, stockPaltaSazon: 0 };
+        if (mad === 'maduro') inc.stockPaltaMadura = cant;
+        else if (mad === 'verde') inc.stockPaltaVerde = cant;
+        else inc.stockPaltaSazon = cant;
+        await Producto.updateOne({ _id: id }, { $inc: inc });
+      } else {
+        await Producto.updateOne({ _id: id }, { $inc: { stockPaltaMadura: cant } });
+      }
     } else {
       await Producto.updateOne({ _id: id }, { $inc: { stockSemanal: cant } });
     }
@@ -96,7 +143,11 @@ const debeRevertirStock = (venta) => {
   return false;
 };
 
-const aplicarDescuentoStockProducto = async (productoId, cantidad) => {
+/**
+ * Descuenta stock. Si `madurezPreferida` es maduro|verde|sazon y el producto usa buckets, solo ese bucket.
+ * Si no hay madurez (p. ej. pedido web), orden: madura → verde → sazón (comportamiento anterior).
+ */
+const aplicarDescuentoStockProducto = async (productoId, cantidad, madurezPreferida) => {
   const id = String(productoId);
   const needTotal = Math.floor(Number(cantidad));
   if (!Number.isFinite(needTotal) || needTotal < 1) return null;
@@ -110,6 +161,28 @@ const aplicarDescuentoStockProducto = async (productoId, cantidad) => {
   const paltaSum = m0 + v0 + s0;
 
   if (paltaSum > 0) {
+    const madPref = normalizeMadurez(madurezPreferida);
+    if (madPref) {
+      let avail = 0;
+      if (madPref === 'maduro') avail = m0;
+      else if (madPref === 'verde') avail = v0;
+      else avail = s0;
+      if (avail < needTotal) return null;
+      const dm = madPref === 'maduro' ? needTotal : 0;
+      const dv = madPref === 'verde' ? needTotal : 0;
+      const ds = madPref === 'sazon' ? needTotal : 0;
+      await Producto.updateOne(
+        { _id: id },
+        {
+          $inc: {
+            stockPaltaMadura: -dm,
+            stockPaltaVerde: -dv,
+            stockPaltaSazon: -ds
+          }
+        }
+      );
+      return { tipo: 'palta', productoId: id, dm, dv, ds };
+    }
     let need = needTotal;
     const dm = Math.min(need, m0);
     need -= dm;
@@ -185,7 +258,13 @@ const generateComprobanteHTML = (venta) => {
 
   const rows = productos
     .map((p) => {
-      const nombre = escapeHtml(p?.nombre);
+      const nombreBase = escapeHtml(p?.nombre);
+      const tipoTxt = p?.tipo != null && String(p.tipo).trim() !== '' ? escapeHtml(String(p.tipo).trim()) : '';
+      let nombre = tipoTxt ? `${nombreBase} <span style="color:#6b7280;font-weight:600;">(${tipoTxt})</span>` : nombreBase;
+      const madL = etiquetaMadurezComprobante(p?.madurez);
+      if (madL) {
+        nombre += ` <span style="color:#92400e;font-size:11px;">· ${escapeHtml(madL)}</span>`;
+      }
       const cant = Number(p?.cantidad);
       const unidad = escapeHtml(p?.medida || '');
       const precio = Number(p?.precioUnitario);
@@ -391,7 +470,10 @@ const generateComprobantePDFBuffer = (venta) =>
       y += 18;
     } else {
       productos.forEach((p) => {
-        const nombre = String(p?.nombre || '');
+        const tipoStr = p?.tipo != null && String(p.tipo).trim() !== '' ? String(p.tipo).trim() : '';
+        let nombre = tipoStr ? `${String(p?.nombre || '')} (${tipoStr})` : String(p?.nombre || '');
+        const madL = etiquetaMadurezComprobante(p?.madurez);
+        if (madL) nombre += ` · ${madL}`;
         const hName = doc.heightOfString(nombre, { width: 228 });
         const rowH = Math.max(18, hName + 8);
         doc.rect(left, y, width, rowH).stroke();
@@ -494,10 +576,14 @@ router.post('/', async (req, res) => {
           ? p.subtotal
           : cantidad * precioUnitario
       );
+      const tipoRaw = p.tipo != null ? String(p.tipo).trim() : '';
+      const madRaw = normalizeMadurez(p.madurez);
       return {
         ...p,
         productoId: p.productoId != null ? String(p.productoId) : undefined,
         nombre: p.nombre,
+        tipo: tipoRaw || undefined,
+        madurez: madRaw || undefined,
         cantidad,
         precioUnitario,
         medida: p.medida || '1kg',
@@ -517,10 +603,19 @@ router.post('/', async (req, res) => {
         return res.status(400).json({ message: `Producto no encontrado (${item.productoId}).` });
       }
       if (!esCanceladoInicial) {
-        const disp = stockDisponibleProducto(prod.toObject ? prod.toObject() : prod);
+        const po = prod.toObject ? prod.toObject() : prod;
+        const mad = normalizeMadurez(item.madurez);
+        const disp =
+          mad && tieneBucketsPalta(po)
+            ? stockDisponiblePorMadurez(po, mad)
+            : stockDisponibleProducto(po);
         if (disp < item.cantidad) {
+          const bucketHint =
+            mad && tieneBucketsPalta(po)
+              ? ` (${etiquetaMadurezComprobante(mad)}: ${disp} kg)`
+              : '';
           return res.status(400).json({
-            message: `Stock insuficiente para "${prod.nombre}". Disponible: ${disp}, solicitado: ${item.cantidad}.`
+            message: `Stock insuficiente para "${prod.nombre}"${bucketHint}. Disponible: ${disp}, solicitado: ${item.cantidad}.`
           });
         }
       }
@@ -565,10 +660,14 @@ router.post('/', async (req, res) => {
     const aplicados = [];
     try {
       for (const item of productosNormalizados) {
-        const r = await aplicarDescuentoStockProducto(item.productoId, item.cantidad);
+        const r = await aplicarDescuentoStockProducto(item.productoId, item.cantidad, item.madurez);
         if (!r) {
           const actual = await Producto.findById(item.productoId).lean();
-          const disp = stockDisponibleProducto(actual);
+          const mad = normalizeMadurez(item.madurez);
+          const disp =
+            mad && tieneBucketsPalta(actual)
+              ? stockDisponiblePorMadurez(actual, mad)
+              : stockDisponibleProducto(actual);
           throw new Error(
             `STOCK_FAIL|${item.nombre || item.productoId}|${disp}|${item.cantidad}`
           );
@@ -681,13 +780,17 @@ router.put('/:id/estado', async (req, res) => {
               message: 'La venta tiene líneas sin productoId; no se puede descontar stock.'
             });
           }
-          const r = await aplicarDescuentoStockProducto(item.productoId, item.cantidad);
+          const r = await aplicarDescuentoStockProducto(item.productoId, item.cantidad, item.madurez);
           if (!r) {
             for (let i = aplicados.length - 1; i >= 0; i--) {
               await revertirDescuentoStockProducto(aplicados[i]);
             }
             const actual = await Producto.findById(item.productoId).lean();
-            const disp = stockDisponibleProducto(actual);
+            const mad = normalizeMadurez(item.madurez);
+            const disp =
+              mad && tieneBucketsPalta(actual)
+                ? stockDisponiblePorMadurez(actual, mad)
+                : stockDisponibleProducto(actual);
             return res.status(409).json({
               message: `Stock insuficiente para "${item.nombre || 'producto'}". Disponible: ${disp}, solicitado: ${item.cantidad}.`
             });
@@ -833,9 +936,12 @@ router.post('/:id/enviar-comprobante', async (req, res) => {
       '',
       'Detalle:',
       ...(Array.isArray(venta.productos)
-        ? venta.productos.map(
-            (p) => `- ${p.nombre} × ${p.cantidad} = S/ ${formatMoney(p.subtotal)}`
-          )
+        ? venta.productos.map((p) => {
+            const tipo = p?.tipo != null && String(p.tipo).trim() !== '' ? ` (${String(p.tipo).trim()})` : '';
+            const mad = etiquetaMadurezComprobante(p?.madurez);
+            const madTxt = mad ? ` [${mad}]` : '';
+            return `- ${p.nombre}${tipo}${madTxt} × ${p.cantidad} = S/ ${formatMoney(p.subtotal)}`;
+          })
         : []),
       '',
       'Gracias por su compra.'

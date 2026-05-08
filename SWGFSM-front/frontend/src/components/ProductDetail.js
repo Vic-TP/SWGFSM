@@ -1,13 +1,87 @@
-// src/components/ProductDetail.js — datos de inventario (API); venta por kg entero (igual que Caja / backend)
+// src/components/ProductDetail.js — inventario desde API; palta por bucket: kg verde/sazón/maduro ↔ POST ventas + madurez
 
 import React, { useState, useEffect } from "react";
-import { stockDisponibleKg } from "../utils/tiendaProducto";
+import {
+  stockDisponibleKg,
+  productoTieneStockPorMadurez,
+  kilosStockPorMadurez,
+  MEASURE_CARRITO_BUCKETS,
+  clampKgPorMadurezUi,
+  totalKgBuckets,
+  formatoKgCarritoBuckets,
+} from "../utils/tiendaProducto";
+
+/** Un campo kg (0 permitido; confirma con Enter o blur). */
+const TiendaBucketKgField = ({ value, maxKg, label, ariaLabel, onCommit }) => {
+  const v = Math.max(0, Math.floor(Number(value) || 0));
+  const maxOk = Math.max(0, Math.floor(Number(maxKg) || 0));
+  const [draft, setDraft] = useState(String(v));
+  useEffect(() => {
+    setDraft(String(Math.max(0, Math.floor(Number(value) || 0))));
+  }, [value]);
+  const commit = () => {
+    let n = Math.floor(Number(String(draft).replace(/\D/g, "")) || 0);
+    if (!Number.isFinite(n) || n < 0) n = 0;
+    n = Math.min(n, maxOk);
+    setDraft(String(n));
+    onCommit(n);
+  };
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-sm font-medium text-gray-800">{label}</span>
+        <span className="text-[10px] text-amber-800 font-medium tabular-nums">máx. {maxOk} kg</span>
+      </div>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          aria-label={`Menos ${label}`}
+          onClick={() => onCommit(Math.max(0, v - 1))}
+          className="w-9 h-9 shrink-0 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold"
+        >
+          −
+        </button>
+        <input
+          type="text"
+          inputMode="numeric"
+          autoComplete="off"
+          aria-label={ariaLabel || label}
+          value={draft}
+          onChange={(e) => {
+            const t = e.target.value.replace(/\D/g, "").slice(0, 8);
+            setDraft(t);
+          }}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              commit();
+            }
+          }}
+          className="flex-1 min-w-0 text-center font-semibold border border-gray-300 rounded-xl py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400/60"
+        />
+        <button
+          type="button"
+          aria-label={`Más ${label}`}
+          onClick={() => onCommit(Math.min(maxOk, v + 1))}
+          disabled={v >= maxOk}
+          className="w-9 h-9 shrink-0 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold disabled:opacity-40"
+        >
+          +
+        </button>
+      </div>
+    </div>
+  );
+};
 
 const ProductDetail = ({ product, onClose, onAddToCart }) => {
   const [quantity, setQuantity] = useState(1);
+  const [kgBuckets, setKgBuckets] = useState(() => formatoKgCarritoBuckets());
 
   const precioPorKilo = Number(product.precioVenta ?? product.precio ?? 0);
   const stockKg = stockDisponibleKg(product);
+  const porMadurez = kilosStockPorMadurez(product);
+  const desgloseMadurez = productoTieneStockPorMadurez(product);
 
   const imgsFicha = (() => {
     const extra = Array.isArray(product.imagenesFichaExtra) ? product.imagenesFichaExtra : [];
@@ -38,20 +112,50 @@ const ProductDetail = ({ product, onClose, onAddToCart }) => {
 
   useEffect(() => {
     setQuantity(1);
+    setKgBuckets(formatoKgCarritoBuckets());
   }, [product?._id]);
 
   useEffect(() => {
-    setQuantity((q) => Math.min(q, Math.max(1, stockKg)));
-  }, [stockKg, product?._id]);
+    if (!desgloseMadurez) {
+      setQuantity((q) => Math.min(q, Math.max(1, stockKg)));
+    } else {
+      setKgBuckets((prev) => clampKgPorMadurezUi(product, prev));
+    }
+  }, [stockKg, desgloseMadurez, product, porMadurez.maduro, porMadurez.verde, porMadurez.sazon]);
+
+  const kgClamped = desgloseMadurez ? clampKgPorMadurezUi(product, kgBuckets) : null;
+  const totalKgCarrito = desgloseMadurez && kgClamped ? totalKgBuckets(kgClamped) : quantity;
 
   const measure = "1kg";
-  const totalPrice = precioPorKilo * quantity;
+  const totalPrice = precioPorKilo * totalKgCarrito;
+
+  const setBucket = (campo, n) => {
+    setKgBuckets((prev) => clampKgPorMadurezUi(product, { ...prev, [campo]: n }));
+  };
 
   const handleAdd = () => {
     if (stockKg < 1) {
       alert("No hay stock disponible de este producto.");
       return;
     }
+
+    if (desgloseMadurez) {
+      const clamped = clampKgPorMadurezUi(product, kgBuckets);
+      const tot = totalKgBuckets(clamped);
+      if (tot < 1) {
+        alert("Indica al menos 1 kg en total (verde, sazón o maduro).");
+        return;
+      }
+      onAddToCart(product, tot, MEASURE_CARRITO_BUCKETS, {
+        precioLinea: precioPorKilo,
+        precioUnitario: precioPorKilo,
+        cantidadKg: tot,
+        kgPorMadurez: clamped,
+      });
+      onClose();
+      return;
+    }
+
     if (quantity > stockKg) {
       alert(`Stock insuficiente. Disponible: ${stockKg} kg.`);
       return;
@@ -117,14 +221,67 @@ const ProductDetail = ({ product, onClose, onAddToCart }) => {
             </div>
 
             <div className="md:w-1/2 p-6 md:p-8">
-              <div className="flex flex-wrap items-center gap-2 mb-2">
+              <div className="flex flex-wrap items-center gap-2 mb-3">
                 <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">
-                  Stock: {stockKg} kg
+                  Total vendible: {stockKg} kg
                 </span>
                 {product.estado === "ACTIVO" && (
                   <span className="text-xs font-semibold text-gray-600">Disponible</span>
                 )}
               </div>
+
+              {desgloseMadurez ? (
+                <div className="mb-4 rounded-xl border border-emerald-100 overflow-hidden bg-white/80">
+                  <p className="text-[11px] font-semibold text-emerald-900 uppercase tracking-wide px-3 py-2 bg-emerald-50/90 border-b border-emerald-100">
+                    Inventario por madurez (desde servidor)
+                  </p>
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-xs text-gray-500 border-b border-gray-100 bg-gray-50/80">
+                        <th className="px-3 py-2 font-semibold">Estado</th>
+                        <th className="px-3 py-2 font-semibold text-right w-24">Kg</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      <tr>
+                        <td className="px-3 py-2 text-gray-800">Palta madura</td>
+                        <td className="px-3 py-2 text-right font-semibold text-gray-900 tabular-nums">
+                          {porMadurez.maduro}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="px-3 py-2 text-gray-800">Palta verde</td>
+                        <td className="px-3 py-2 text-right font-semibold text-gray-900 tabular-nums">
+                          {porMadurez.verde}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="px-3 py-2 text-gray-800">Sazón (en punto)</td>
+                        <td className="px-3 py-2 text-right font-semibold text-gray-900 tabular-nums">
+                          {porMadurez.sazon}
+                        </td>
+                      </tr>
+                    </tbody>
+                    <tfoot>
+                      <tr className="bg-emerald-50/50 text-emerald-900 text-xs font-bold">
+                        <td className="px-3 py-2">Total</td>
+                        <td className="px-3 py-2 text-right tabular-nums">
+                          {porMadurez.maduro + porMadurez.verde + porMadurez.sazon}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              ) : stockKg > 0 ? (
+                <p className="mb-4 text-xs text-gray-600 rounded-xl border border-gray-100 bg-gray-50 px-3 py-2">
+                  Inventario en una sola categoría (legacy):{" "}
+                  <span className="font-semibold text-gray-900">{stockKg} kg</span> — stock semanal en catálogo.
+                </p>
+              ) : (
+                <p className="mb-4 text-xs text-amber-800 rounded-xl border border-amber-100 bg-amber-50/80 px-3 py-2">
+                  Sin stock registrado para este producto.
+                </p>
+              )}
 
               <h2 className="text-2xl md:text-3xl font-bold text-slate-900 uppercase tracking-wide">
                 {titulo}
@@ -147,31 +304,69 @@ const ProductDetail = ({ product, onClose, onAddToCart }) => {
                 <span className="text-sm text-gray-400 ml-1">/kg</span>
               </div>
 
-              <div className="mt-6">
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Cantidad (kg)
-                </label>
-                <div className="flex items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-                    className="w-10 h-10 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold text-lg"
-                  >
-                    -
-                  </button>
-                  <span className="text-xl font-semibold text-gray-800 w-12 text-center">
-                    {quantity}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setQuantity((q) => Math.min(stockKg, q + 1))}
-                    disabled={quantity >= stockKg}
-                    className="w-10 h-10 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold text-lg disabled:opacity-40"
-                  >
-                    +
-                  </button>
+              {desgloseMadurez ? (
+                <div className="mt-6 space-y-4">
+                  <p className="text-sm font-semibold text-gray-800">
+                    Cantidad por madurez (kg)
+                  </p>
+                  <p className="text-xs text-gray-500 -mt-2">
+                    Indica cuántos kilos de cada estado quieres. El pedido descontará cada uno en el inventario
+                    correspondiente (mismo criterio que la caja y el servidor).
+                  </p>
+                  <div className="rounded-2xl border border-emerald-100 bg-emerald-50/30 p-4 space-y-5">
+                    <TiendaBucketKgField
+                      label="Verde"
+                      value={kgClamped.verde}
+                      maxKg={porMadurez.verde}
+                      onCommit={(n) => setBucket("verde", n)}
+                    />
+                    <TiendaBucketKgField
+                      label="Sazón (en punto)"
+                      value={kgClamped.sazon}
+                      maxKg={porMadurez.sazon}
+                      onCommit={(n) => setBucket("sazon", n)}
+                    />
+                    <TiendaBucketKgField
+                      label="Maduro"
+                      value={kgClamped.maduro}
+                      maxKg={porMadurez.maduro}
+                      onCommit={(n) => setBucket("maduro", n)}
+                    />
+                  </div>
+                  <p className="text-xs text-gray-600">
+                    Total seleccionado:{" "}
+                    <span className="font-semibold text-emerald-800 tabular-nums">
+                      {totalKgBuckets(kgClamped)} kg
+                    </span>
+                  </p>
                 </div>
-              </div>
+              ) : (
+                <div className="mt-6">
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Cantidad (kg)
+                  </label>
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+                      className="w-10 h-10 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold text-lg"
+                    >
+                      -
+                    </button>
+                    <span className="text-xl font-semibold text-gray-800 w-12 text-center">
+                      {quantity}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setQuantity((q) => Math.min(stockKg, q + 1))}
+                      disabled={quantity >= stockKg}
+                      className="w-10 h-10 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold text-lg disabled:opacity-40"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+              )}
 
               <div className="mt-4 p-3 bg-gray-50 rounded-xl">
                 <div className="flex justify-between items-center">
@@ -185,7 +380,7 @@ const ProductDetail = ({ product, onClose, onAddToCart }) => {
               <button
                 type="button"
                 onClick={handleAdd}
-                disabled={stockKg < 1}
+                disabled={stockKg < 1 || (desgloseMadurez && totalKgBuckets(kgClamped) < 1)}
                 className="w-full mt-6 bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-full transition-all duration-300 shadow-md"
               >
                 Agregar al carrito

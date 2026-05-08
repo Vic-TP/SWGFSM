@@ -6,7 +6,15 @@ import Footer from "./Footer";
 import CartSidebar from "./CartSidebar";
 import ProductDetail from "./ProductDetail";
 import PaymentGateway from "./PaymentGateway";
-import { categoriaCatalogo, imagenCatalogo, descripcionCortaTarjeta } from "../utils/tiendaProducto";
+import {
+  categoriaCatalogo,
+  imagenCatalogo,
+  descripcionCortaTarjeta,
+  tipoProductoLabel,
+  MEASURE_CARRITO_BUCKETS,
+  clampKgPorMadurezUi,
+  totalKgBuckets,
+} from "../utils/tiendaProducto";
 
 import paltaHassVerde from "../assets/palta-hass-verde.png";
 import paltaHassMadura from "../assets/palta-hass-madura.png";
@@ -279,6 +287,51 @@ const HomePage = () => {
     );
     const cantidadKg = Math.max(1, Math.floor(Number(meta.cantidadKg)) || 1);
 
+    const bucketMeta =
+      meta.kgPorMadurez != null && typeof meta.kgPorMadurez === "object" ? meta.kgPorMadurez : null;
+    if (bucketMeta && measure === MEASURE_CARRITO_BUCKETS) {
+      const clamped = clampKgPorMadurezUi(product, bucketMeta);
+      const totalKg = totalKgBuckets(clamped);
+      if (totalKg < 1) {
+        window.alert("Indica al menos 1 kg en total entre verde, sazón y maduro.");
+        return;
+      }
+      setCartItems((prev) => {
+        const existe = prev.some(
+          (i) =>
+            idProducto(i.productoId) === productoId &&
+            (i.measure === MEASURE_CARRITO_BUCKETS || i.esBuckets === true)
+        );
+        if (existe) {
+          queueMicrotask(() =>
+            window.alert(
+              `«${product.nombre}» ya está en el carrito. Abre el carrito para quitarlo si quieres cambiar las cantidades por madurez, o ajusta desde el detalle del producto más adelante.`
+            )
+          );
+          return prev;
+        }
+        return [
+          ...prev,
+          {
+            productoId,
+            id: productoId,
+            name: product.nombre,
+            tipo: tipoProductoLabel(product),
+            price: precioUnitario,
+            image: product.imagen,
+            measure: MEASURE_CARRITO_BUCKETS,
+            esBuckets: true,
+            quantity: totalKg,
+            precioUnitario,
+            cantidadKg: totalKg,
+            kgPorMadurez: clamped,
+          },
+        ];
+      });
+      setIsCartOpen(true);
+      return;
+    }
+
     setCartItems((prev) => {
       const ix = prev.findIndex(
         (i) => idProducto(i.productoId) === productoId && i.measure === measure
@@ -287,7 +340,7 @@ const HomePage = () => {
         return prev.map((i, idx) => {
           if (idx !== ix) return i;
           const q = i.quantity + quantity;
-          return { ...i, quantity: q, cantidadKg: q };
+          return { ...i, quantity: q, cantidadKg: q, tipo: tipoProductoLabel(product) };
         });
       }
       return [
@@ -296,6 +349,7 @@ const HomePage = () => {
           productoId,
           id: productoId,
           name: product.nombre,
+          tipo: tipoProductoLabel(product),
           price: precioLinea,
           image: product.imagen,
           measure,
@@ -329,19 +383,56 @@ const HomePage = () => {
   };
 
   const handlePaymentSuccess = async () => {
-    const productos = cartItems.map((item) => {
-      const cantidad = Math.max(1, Math.floor(Number(item.cantidadKg ?? item.quantity)) || 1);
+    const lineasDesdeItem = (item) => {
       const pu = precioNum(item.precioUnitario);
-      const subtotalLinea = precioNum(item.price) * precioNum(item.quantity);
-      return {
+      const tipoStr =
+        item.tipo != null && String(item.tipo).trim() !== "" && String(item.tipo).trim() !== "—"
+          ? String(item.tipo).trim()
+          : "";
+      const base = {
         productoId: idProducto(item.productoId),
         nombre: item.name,
-        cantidad,
+        ...(tipoStr ? { tipo: tipoStr } : {}),
         precioUnitario: pu,
-        medida: item.measure || "1kg",
-        subtotal: subtotalLinea,
       };
-    });
+
+      if (item.esBuckets && item.kgPorMadurez && typeof item.kgPorMadurez === "object") {
+        const kg = item.kgPorMadurez;
+        const filas = [];
+        for (const mad of ["verde", "sazon", "maduro"]) {
+          const c = Math.max(0, Math.floor(Number(kg[mad]) || 0));
+          if (c < 1) continue;
+          filas.push({
+            ...base,
+            cantidad: c,
+            precioUnitario: pu,
+            medida: "1kg",
+            subtotal: c * pu,
+            madurez: mad,
+          });
+        }
+        return filas;
+      }
+
+      const cantidad = Math.max(1, Math.floor(Number(item.cantidadKg ?? item.quantity)) || 1);
+      const subtotalLinea = precioNum(item.price) * precioNum(item.quantity);
+      return [
+        {
+          ...base,
+          cantidad,
+          precioUnitario: pu,
+          medida: item.measure || "1kg",
+          subtotal: subtotalLinea,
+        },
+      ];
+    };
+
+    const productos = cartItems.flatMap(lineasDesdeItem);
+
+    if (!productos.length) {
+      alert("El carrito no tiene líneas válidas para enviar.");
+      return;
+    }
 
     const total = productos.reduce((s, x) => s + x.subtotal, 0);
 
@@ -389,12 +480,13 @@ const HomePage = () => {
           numeroVenta: ventaGuardada.numeroVenta,
           date: new Date().toISOString(),
           total,
-          items: cartItems.map(({ name, measure, quantity, price, productoId }) => ({
+          items: cartItems.map(({ name, measure, quantity, price, productoId, esBuckets, kgPorMadurez }) => ({
             name,
             measure,
             quantity,
             price,
             productoId,
+            ...(esBuckets && kgPorMadurez ? { esBuckets: true, kgPorMadurez } : {}),
           })),
           estado: "Pendiente",
         };
@@ -884,7 +976,7 @@ const HomePage = () => {
               { id: "hass", label: "Hass" },
               { id: "fuerte", label: "Fuerte" },
               { id: "naval", label: "Naval" },
-              { id: "selva", label: "Selva" },
+              { id: "selva", label: "Hall" },
             ].map((filter) => (
               <button
                 key={filter.id}

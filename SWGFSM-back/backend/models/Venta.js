@@ -34,6 +34,10 @@ const ventaSchema = new mongoose.Schema({
   productos: [{
     productoId: { type: String, required: false },
     nombre: { type: String, required: true },
+    /** Variedad / tipo de palta (p. ej. Hall, Hass), alineado con catálogo Producto */
+    tipo: { type: String, required: false, trim: true },
+    /** Madurez vendida: descuenta stockPaltaMadura / Verde / Sazon en producto (maduro|verde|sazon) */
+    madurez: { type: String, required: false, trim: true },
     cantidad: { type: Number, required: true, min: 1 },
     precioUnitario: { type: Number, required: true, min: 0 },
     medida: { type: String, required: false, default: "1kg" },

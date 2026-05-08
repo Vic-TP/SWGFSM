@@ -8,6 +8,7 @@ import TareasAsignadas from "./TareasAsignadas";
 import CajaRegistradora from "./CajaRegistradora";
 import Prediccion from "../predict/Prediccion";
 import PasswordInput from "./PasswordInput";
+import { nombreLineaVenta } from "../utils/tiendaProducto";
 
 const API_URL_PRODUCTOS  = "http://localhost:5000/api/producto";
 const API_URL_INVENTARIO = "http://localhost:5000/api/inventario";
@@ -134,7 +135,7 @@ const ventasToXlsxRows = (rows) =>
   rows.map((v) => {
     const fv = fechaVenta(v);
     const productos = Array.isArray(v.productos)
-      ? v.productos.map((p) => `${p.nombre || ""} x${p.cantidad || ""}`).join("; ")
+      ? v.productos.map((p) => `${nombreLineaVenta(p)} x${p.cantidad || ""}`).join("; ")
       : "";
     return {
       numeroVenta: v.numeroVenta ?? "",

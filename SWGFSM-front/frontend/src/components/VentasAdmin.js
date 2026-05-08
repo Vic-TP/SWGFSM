@@ -1,8 +1,10 @@
 // src/components/VentasAdmin.js - VERSIÓN CORREGIDA
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
+import { nombreLineaVenta, mergeTipoLineaDesdeCatalogo } from "../utils/tiendaProducto";
 
 const API_URL_VENTAS = "http://localhost:5000/api/ventas";
+const API_URL_PRODUCTOS = "http://localhost:5000/api/producto";
 
 const VentasAdmin = () => {
   const [ventas, setVentas] = useState([]);
@@ -11,6 +13,18 @@ const VentasAdmin = () => {
   const [filterEstado, setFilterEstado] = useState("todos");
   const [filterOrigen, setFilterOrigen] = useState("todos");
   const [ventaDetalle, setVentaDetalle] = useState(null);
+  const [catalogoProductos, setCatalogoProductos] = useState([]);
+
+  const productoPorId = useMemo(() => {
+    const m = new Map();
+    catalogoProductos.forEach((p) => {
+      if (p?._id != null) m.set(String(p._id), p);
+    });
+    return m;
+  }, [catalogoProductos]);
+
+  const etiquetaProductoVenta = (line) =>
+    nombreLineaVenta(mergeTipoLineaDesdeCatalogo(line, productoPorId));
 
   /** CAJA = trabajador en caja; ONLINE = cliente compró en la web */
   const etiquetaOrigen = (venta) => {
@@ -49,6 +63,21 @@ const VentasAdmin = () => {
 
   useEffect(() => {
     fetchVentas();
+  }, []);
+
+  useEffect(() => {
+    let cancel = false;
+    fetch(API_URL_PRODUCTOS)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data) => {
+        if (!cancel) setCatalogoProductos(Array.isArray(data) ? data : []);
+      })
+      .catch(() => {
+        if (!cancel) setCatalogoProductos([]);
+      });
+    return () => {
+      cancel = true;
+    };
   }, []);
 
   const cambiarOrigen = async (id, nuevoOrigen) => {
@@ -314,7 +343,7 @@ const VentasAdmin = () => {
                     </td>
                     <td className="px-6 py-3 font-medium text-gray-800">{venta.cliente}</td>
                     <td className="px-6 py-3 text-gray-600">
-                      {venta.productos?.slice(0, 2).map(p => `${p.nombre} x${p.cantidad}`).join(", ")}
+                      {venta.productos?.slice(0, 2).map((p) => `${etiquetaProductoVenta(p)} x${p.cantidad}`).join(", ")}
                       {venta.productos?.length > 2 && " ..."}
                     </td>
                     <td className="px-6 py-3 text-center" onClick={(e) => e.stopPropagation()}>
@@ -462,8 +491,8 @@ const VentasAdmin = () => {
                     </thead>
                     <tbody>
                       {(ventaDetalle.productos || []).map((p, idx) => (
-                        <tr key={`${p.nombre}-${idx}`} className="border-b last:border-0">
-                          <td className="px-4 py-3 font-medium text-gray-800">{p.nombre}</td>
+                        <tr key={`${String(p.productoId ?? "")}-${idx}`} className="border-b last:border-0">
+                          <td className="px-4 py-3 font-medium text-gray-800">{etiquetaProductoVenta(p)}</td>
                           <td className="px-4 py-3 text-center text-gray-700">{p.cantidad}</td>
                           <td className="px-4 py-3 text-center text-gray-700">{p.medida || "—"}</td>
                           <td className="px-4 py-3 text-right text-gray-700">S/ {(p.precioUnitario || 0).toFixed(2)}</td>

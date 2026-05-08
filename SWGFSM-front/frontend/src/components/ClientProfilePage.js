@@ -1,10 +1,12 @@
 // src/components/ClientProfilePage.js - VERSIÓN CON CONEXIÓN A MONGODB
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import PasswordInput from "./PasswordInput";
+import { nombreLineaVenta, mergeTipoLineaDesdeCatalogo } from "../utils/tiendaProducto";
 
 const API_URL_VENTAS = "http://localhost:5000/api/ventas";
 const API_URL_CLIENTES = "http://localhost:5000/api/clientes";
+const API_URL_PRODUCTOS = "http://localhost:5000/api/producto";
 
 const mapServerCliente = (doc) => {
   if (!doc) return null;
@@ -73,10 +75,25 @@ const ClientProfilePage = () => {
   const [passwordData, setPasswordData] = useState({ current: "", new: "", confirm: "" });
   const [loading, setLoading] = useState(true);
   const [detailOrder, setDetailOrder] = useState(null);
+  const [catalogoProductos, setCatalogoProductos] = useState([]);
 
-  useEffect(() => {
-    loadClientAndOrders();
-  }, []);
+  const productoPorId = useMemo(() => {
+    const m = new Map();
+    catalogoProductos.forEach((p) => {
+      if (p?._id != null) m.set(String(p._id), p);
+    });
+    return m;
+  }, [catalogoProductos]);
+
+  const etiquetaLineaPedido = (item) => {
+    const line = {
+      nombre: item.nombre || item.name,
+      tipo: item.tipo,
+      madurez: item.madurez,
+      productoId: item.productoId,
+    };
+    return nombreLineaVenta(mergeTipoLineaDesdeCatalogo(line, productoPorId));
+  };
 
   useEffect(() => {
     if (!detailOrder) return;
@@ -149,6 +166,25 @@ const ClientProfilePage = () => {
       }
     }
   };
+
+  useEffect(() => {
+    loadClientAndOrders();
+  }, []);
+
+  useEffect(() => {
+    let cancel = false;
+    fetch(API_URL_PRODUCTOS)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data) => {
+        if (!cancel) setCatalogoProductos(Array.isArray(data) ? data : []);
+      })
+      .catch(() => {
+        if (!cancel) setCatalogoProductos([]);
+      });
+    return () => {
+      cancel = true;
+    };
+  }, []);
 
   const confirmLogout = () => {
     localStorage.removeItem("cliente_logueado");
@@ -410,7 +446,7 @@ const ClientProfilePage = () => {
                 {(order.productos || order.items || []).map((item, idx) => (
                   <div key={idx} className="flex justify-between text-xs text-gray-600">
                     <span>
-                      {item.nombre || item.name} ({item.medida || item.measure}) x{item.cantidad || item.quantity}
+                      {etiquetaLineaPedido(item)} ({item.medida || item.measure}) x{item.cantidad || item.quantity}
                     </span>
                     <span className="font-semibold">S/ {lineaSubtotal(item).toFixed(2)}</span>
                   </div>
@@ -629,7 +665,7 @@ const ClientProfilePage = () => {
                     <tbody>
                       {(detailOrder.productos || detailOrder.items || []).map((item, idx) => (
                         <tr key={idx} className="border-t border-gray-100">
-                          <td className="px-3 py-2 text-gray-800">{item.nombre || item.name}</td>
+                          <td className="px-3 py-2 text-gray-800">{etiquetaLineaPedido(item)}</td>
                           <td className="px-3 py-2 text-gray-600">{item.medida || item.measure || "1kg"}</td>
                           <td className="px-3 py-2 text-right tabular-nums">{item.cantidad ?? item.quantity}</td>
                           <td className="px-3 py-2 text-right tabular-nums">
