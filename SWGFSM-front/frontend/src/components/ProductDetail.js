@@ -8,6 +8,27 @@ const ProductDetail = ({ product, onClose, onAddToCart }) => {
 
   const precioPorKilo = Number(product.precioVenta ?? product.precio ?? 0);
   const stockKg = stockDisponibleKg(product);
+
+  const imgsFicha = (() => {
+    const extra = Array.isArray(product.imagenesFichaExtra) ? product.imagenesFichaExtra : [];
+    const list = [product.imagen, ...extra].filter(Boolean);
+    const out = [];
+    const seen = new Set();
+    for (const u of list) {
+      if (seen.has(u)) continue;
+      seen.add(u);
+      out.push(u);
+    }
+    return out;
+  })();
+
+  const titulo = (() => {
+    const nombre = String(product?.nombre || "").trim();
+    const tipo = String(product?.tipo || "").trim();
+    if (!tipo) return nombre || "Producto";
+    if (nombre.toLowerCase().includes(tipo.toLowerCase())) return nombre || "Producto";
+    return `${nombre || "Producto"} ${tipo}`;
+  })();
   const descripcion =
     product.detalle || product.descripcion || product.description || "";
   const subtitulo =
@@ -56,12 +77,43 @@ const ProductDetail = ({ product, onClose, onAddToCart }) => {
           </button>
 
           <div className="flex flex-col md:flex-row">
-            <div className="md:w-1/2 bg-gradient-to-br from-lime-50 to-emerald-50 p-8 flex items-center justify-center md:rounded-l-3xl">
-              <img
-                src={product.imagen}
-                alt={product.nombre}
-                className="w-64 h-64 object-contain"
-              />
+            <div className="md:w-1/2 bg-gradient-to-br from-lime-50 to-emerald-50 p-6 md:p-8 flex flex-col items-center justify-center md:rounded-l-3xl gap-4">
+              <div
+                className={`grid gap-4 w-full max-w-sm mx-auto ${imgsFicha.length > 1 ? "grid-cols-2" : "grid-cols-1"}`}
+              >
+                {imgsFicha.map((src, i) => {
+                  const nt = `${product?.nombre || ""} ${product?.tipo || ""}`.toLowerCase();
+                  const esHass = nt.includes("hass");
+                  const esFuerte = nt.includes("fuerte");
+                  let sub = null;
+                  let subText = null;
+                  if (imgsFicha.length > 1 && esHass) {
+                    sub = i === 0 ? "Verde" : "Madura";
+                    subText =
+                      sub === "Verde" ? "Palta Hass verde" : "Palta Hass madura";
+                  } else if (imgsFicha.length > 1 && esFuerte) {
+                    sub = i === 0 ? "Detalle" : "Mostrador";
+                    subText =
+                      sub === "Detalle"
+                        ? "Palta Fuerte · vista principal"
+                        : "Palta Fuerte · mostrador";
+                  }
+                  return (
+                    <div key={src} className="flex flex-col items-center text-center">
+                      <img
+                        src={src}
+                        alt={subText ? `${titulo} — ${subText}` : titulo}
+                        className="w-full max-h-52 object-contain rounded-2xl bg-white/60 p-3 shadow-inner"
+                      />
+                      {subText && (
+                        <span className="mt-2 text-xs font-semibold text-emerald-800">
+                          {subText}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
 
             <div className="md:w-1/2 p-6 md:p-8">
@@ -75,7 +127,7 @@ const ProductDetail = ({ product, onClose, onAddToCart }) => {
               </div>
 
               <h2 className="text-2xl md:text-3xl font-bold text-slate-900 uppercase tracking-wide">
-                {product.nombre}
+                {titulo}
               </h2>
               <p className="text-sm text-gray-500 mt-1">{subtitulo}</p>
 

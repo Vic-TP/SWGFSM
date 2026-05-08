@@ -107,6 +107,30 @@ const ProveedoresTable = () => {
     }
   };
 
+  const eliminarProveedor = async (prov) => {
+    const id = prov?._id;
+    if (!id) {
+      window.alert("No se pudo identificar el proveedor a eliminar.");
+      return;
+    }
+    const ok = window.confirm(
+      `¿Seguro que deseas eliminar a "${prov.nombre || "este proveedor"}"? Esta acción no se puede deshacer.`
+    );
+    if (!ok) return;
+
+    try {
+      const res = await fetch(`${API_URL_PROVEEDORES}/${id}`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data?.message || `Error al eliminar (${res.status})`);
+      }
+      await cargarProveedores();
+    } catch (err) {
+      console.error(err);
+      window.alert(err.message || "No se pudo eliminar el proveedor.");
+    }
+  };
+
   return (
     <section className="p-8">
       <div className="flex items-center justify-between mb-6">
@@ -173,13 +197,22 @@ const ProveedoresTable = () => {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-center">
-                      <button
-                        type="button"
-                        className="bg-amber-500 hover:bg-amber-600 text-white text-xs font-semibold px-4 py-1.5 rounded-full shadow-sm"
-                        onClick={() => abrirEditar(prov)}
-                      >
-                        Editar
-                      </button>
+                      <div className="flex items-center justify-center gap-2">
+                        <button
+                          type="button"
+                          className="bg-amber-500 hover:bg-amber-600 text-white text-xs font-semibold px-4 py-1.5 rounded-full shadow-sm"
+                          onClick={() => abrirEditar(prov)}
+                        >
+                          Editar
+                        </button>
+                        <button
+                          type="button"
+                          className="bg-red-600 hover:bg-red-700 text-white text-xs font-semibold px-4 py-1.5 rounded-full shadow-sm"
+                          onClick={() => eliminarProveedor(prov)}
+                        >
+                          Eliminar
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}

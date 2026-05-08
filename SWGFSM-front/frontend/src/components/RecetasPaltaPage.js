@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react";
 
 const badgeClass =
-  "inline-flex items-center rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-800";
+  "inline-flex items-center rounded-full bg-lime-100 px-3 py-1 text-xs font-bold text-emerald-900 border border-lime-200";
 
 const RecetasPaltaPage = () => {
   const recetas = useMemo(
@@ -134,19 +134,19 @@ const RecetasPaltaPage = () => {
   const [openId, setOpenId] = useState(recetas[0]?.id || "");
 
   return (
-    <div className="min-h-screen bg-white">
-      <header className="sticky top-0 z-40 border-b border-emerald-100 bg-white/80 backdrop-blur">
+    <div className="min-h-screen bg-gradient-to-b from-lime-50 via-white to-emerald-50">
+      <header className="sticky top-0 z-40 border-b border-lime-200/70 bg-white/75 backdrop-blur">
         <div className="mx-auto max-w-7xl px-6 py-4 flex items-center justify-between gap-4">
           <button
             type="button"
             onClick={() => (window.location.href = "/")}
-            className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-white px-4 py-2 text-sm font-semibold text-emerald-900 hover:bg-emerald-50 transition"
+            className="inline-flex items-center gap-2 rounded-full border border-lime-200 bg-white px-4 py-2 text-sm font-semibold text-emerald-900 hover:bg-lime-50 transition shadow-sm"
           >
             <span aria-hidden>←</span>
             <span>Volver</span>
           </button>
           <div className="text-right">
-            <p className="text-xs font-bold tracking-[0.28em] text-emerald-700 uppercase">
+            <p className="text-xs font-bold tracking-[0.28em] text-lime-700 uppercase">
               Recetarios
             </p>
             <h1 className="text-lg sm:text-xl font-extrabold text-slate-900">
@@ -158,8 +158,8 @@ const RecetasPaltaPage = () => {
 
       <main className="mx-auto max-w-7xl px-6 py-10 lg:py-14">
         <div className="mx-auto max-w-3xl text-center">
-          <span className="inline-flex items-center gap-2 rounded-full bg-emerald-100 px-5 py-2">
-            <span className="text-emerald-800 text-sm font-bold tracking-wide uppercase">
+          <span className="inline-flex items-center gap-2 rounded-full bg-lime-100 px-5 py-2 border border-lime-200 shadow-sm">
+            <span className="text-emerald-900 text-sm font-bold tracking-wide uppercase">
               Ideas saludables
             </span>
           </span>
@@ -173,8 +173,8 @@ const RecetasPaltaPage = () => {
 
         <div className="mt-12 grid grid-cols-1 lg:grid-cols-[380px_1fr] gap-8">
           <aside className="lg:sticky lg:top-24 h-fit">
-            <div className="rounded-3xl border border-emerald-100 bg-white shadow-sm overflow-hidden">
-              <div className="px-5 py-4 border-b border-emerald-100 bg-gradient-to-b from-emerald-50 to-white">
+            <div className="rounded-3xl border border-lime-200/70 bg-white shadow-sm overflow-hidden">
+              <div className="px-5 py-4 border-b border-lime-200/60 bg-gradient-to-b from-lime-50 to-white">
                 <p className="text-sm font-extrabold text-emerald-900">
                   Recetas disponibles
                 </p>
@@ -192,8 +192,8 @@ const RecetasPaltaPage = () => {
                       onClick={() => setOpenId(r.id)}
                       className={`w-full text-left rounded-2xl px-4 py-3 border transition ${
                         active
-                          ? "border-emerald-300 bg-emerald-50"
-                          : "border-transparent hover:border-emerald-200 hover:bg-emerald-50/50"
+                          ? "border-lime-300 bg-lime-50"
+                          : "border-transparent hover:border-lime-200 hover:bg-lime-50/60"
                       }`}
                     >
                       <div className="flex items-start justify-between gap-3">
@@ -207,7 +207,7 @@ const RecetasPaltaPage = () => {
                         </div>
                         <span
                           className={`shrink-0 h-2.5 w-2.5 rounded-full mt-2 ${
-                            active ? "bg-emerald-600" : "bg-emerald-200"
+                            active ? "bg-lime-600" : "bg-lime-200"
                           }`}
                           aria-hidden
                         />
@@ -225,9 +225,9 @@ const RecetasPaltaPage = () => {
               .map((r) => (
                 <article
                   key={r.id}
-                  className="rounded-3xl border border-emerald-100 bg-white shadow-sm overflow-hidden"
+                  className="rounded-3xl border border-lime-200/70 bg-white shadow-sm overflow-hidden"
                 >
-                  <div className="px-6 py-6 sm:px-8 sm:py-8 bg-gradient-to-br from-emerald-50 via-white to-lime-50">
+                  <div className="px-6 py-6 sm:px-8 sm:py-8 bg-gradient-to-br from-lime-50 via-white to-emerald-50">
                     <h3 className="text-3xl sm:text-4xl font-black text-slate-900">
                       {r.titulo}
                     </h3>
@@ -242,28 +242,28 @@ const RecetasPaltaPage = () => {
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-0">
-                    <div className="p-6 sm:p-8 border-t border-emerald-100 md:border-t-0 md:border-r md:border-emerald-100">
+                    <div className="p-6 sm:p-8 border-t border-lime-200/60 md:border-t-0 md:border-r md:border-lime-200/60">
                       <h4 className="text-sm font-extrabold text-emerald-900 uppercase tracking-[0.18em]">
                         Ingredientes
                       </h4>
                       <ul className="mt-4 space-y-2 text-slate-700">
                         {r.ingredientes.map((x) => (
                           <li key={x} className="flex gap-2">
-                            <span className="mt-1 h-2 w-2 rounded-full bg-emerald-500 shrink-0" aria-hidden />
+                            <span className="mt-1 h-2 w-2 rounded-full bg-lime-600 shrink-0" aria-hidden />
                             <span className="text-sm sm:text-base">{x}</span>
                           </li>
                         ))}
                       </ul>
                     </div>
 
-                    <div className="p-6 sm:p-8 border-t border-emerald-100 md:border-t-0">
+                    <div className="p-6 sm:p-8 border-t border-lime-200/60 md:border-t-0">
                       <h4 className="text-sm font-extrabold text-emerald-900 uppercase tracking-[0.18em]">
                         Preparación
                       </h4>
                       <ol className="mt-4 space-y-3 text-slate-700">
                         {r.pasos.map((x, idx) => (
                           <li key={x} className="flex gap-3">
-                            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-100 text-emerald-900 text-sm font-extrabold shrink-0">
+                            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-lime-100 text-emerald-900 text-sm font-extrabold shrink-0 border border-lime-200">
                               {idx + 1}
                             </span>
                             <span className="text-sm sm:text-base leading-relaxed">
