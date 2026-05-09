@@ -115,6 +115,22 @@ const ProductDetail = ({ product, onClose, onAddToCart }) => {
     setKgBuckets(formatoKgCarritoBuckets());
   }, [product?._id]);
 
+  // Evita que el scroll afecte a la página de fondo mientras el modal está abierto
+  useEffect(() => {
+    const body = document.body;
+    const prevOverflow = body.style.overflow;
+    const prevPaddingRight = body.style.paddingRight;
+
+    const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+    body.style.overflow = "hidden";
+    if (scrollbarWidth > 0) body.style.paddingRight = `${scrollbarWidth}px`;
+
+    return () => {
+      body.style.overflow = prevOverflow;
+      body.style.paddingRight = prevPaddingRight;
+    };
+  }, []);
+
   useEffect(() => {
     if (!desgloseMadurez) {
       setQuantity((q) => Math.min(q, Math.max(1, stockKg)));
@@ -169,8 +185,15 @@ const ProductDetail = ({ product, onClose, onAddToCart }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3">
-      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3"
+      onWheelCapture={(e) => e.stopPropagation()}
+      onTouchMoveCapture={(e) => e.stopPropagation()}
+    >
+      <div
+        className="bg-white rounded-3xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto"
+        style={{ overscrollBehavior: "contain" }}
+      >
         <div className="relative">
           <button
             type="button"
@@ -233,7 +256,7 @@ const ProductDetail = ({ product, onClose, onAddToCart }) => {
               {desgloseMadurez ? (
                 <div className="mb-4 rounded-xl border border-emerald-100 overflow-hidden bg-white/80">
                   <p className="text-[11px] font-semibold text-emerald-900 uppercase tracking-wide px-3 py-2 bg-emerald-50/90 border-b border-emerald-100">
-                    Inventario por madurez (desde servidor)
+                    Clasificación disponible
                   </p>
                   <table className="w-full text-sm">
                     <thead>
@@ -295,9 +318,6 @@ const ProductDetail = ({ product, onClose, onAddToCart }) => {
               )}
 
               <div className="mt-6">
-                <p className="text-xs text-gray-500 mb-2">
-                  Precio por kilogramo (venta al detalle; inventario en kg enteros).
-                </p>
                 <span className="text-3xl font-bold text-emerald-700">
                   S/ {precioPorKilo.toFixed(2)}
                 </span>
@@ -310,8 +330,7 @@ const ProductDetail = ({ product, onClose, onAddToCart }) => {
                     Cantidad por madurez (kg)
                   </p>
                   <p className="text-xs text-gray-500 -mt-2">
-                    Indica cuántos kilos de cada estado quieres. El pedido descontará cada uno en el inventario
-                    correspondiente (mismo criterio que la caja y el servidor).
+                    Indica cuántos kilos de cada estado quieres.
                   </p>
                   <div className="rounded-2xl border border-emerald-100 bg-emerald-50/30 p-4 space-y-5">
                     <TiendaBucketKgField

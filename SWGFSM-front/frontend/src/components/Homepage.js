@@ -18,6 +18,7 @@ import {
 
 import paltaHassVerde from "../assets/palta-hass-verde.png";
 import paltaHassMadura from "../assets/palta-hass-madura.png";
+import paltaHassCarousel from "../assets/palta-hass.png";
 import paltaFuerte from "../assets/palta-fuerte.png";
 import paltaFuerteMostrador from "../assets/palta-fuerte-mostrador.png";
 import paltaNaval from "../assets/palta-naval.png";
@@ -37,6 +38,14 @@ import iconCalidad from "../assets/iconos/calidad.png";
 
 const API_URL_PRODUCTOS = "http://localhost:5000/api/producto";
 const API_URL_VENTAS = "http://localhost:5000/api/ventas";
+
+/** Carrusel hero: rutas empaquetadas por Webpack (siempre visibles en dev y build). Para tus fotos, sustituye los PNG en src/assets (o public/hero-carousel vía código). */
+const HERO_CAROUSEL_SLIDES = [
+  { key: "hass", src: paltaHassCarousel, alt: "Palta Hass seleccionada", label: "Palta Hass" },
+  { key: "naval", src: paltaNaval, alt: "Palta Naval en cultivo", label: "Palta Naval" },
+  { key: "chacra", src: procesoChacra, alt: "Chacra y origen peruano", label: "Del campo a tu mesa" },
+  { key: "selva", src: paltaSelva, alt: "Palta de la selva peruana", label: "Palta de la selva" },
+];
 
 const IMG_DEFAULTS = {
   hassVerde: paltaHassVerde,
@@ -130,7 +139,7 @@ const IconoProductoFresco = () => (
   <img
     src={iconProductoFresco}
     alt=""
-    className="h-14 w-14 rounded-2xl object-cover shadow-sm ring-1 ring-emerald-200/60"
+    className="h-14 w-14 rounded-2xl object-cover shadow-sm ring-1 ring-[#d4e9e2]/90"
     loading="lazy"
   />
 );
@@ -239,6 +248,7 @@ const HomePage = () => {
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState("efectivo");
   const [productosActivos, setProductosActivos] = useState([]);
   const [loadingProductos, setLoadingProductos] = useState(true);
+  const [heroSlide, setHeroSlide] = useState(0);
 
   useEffect(() => {
     try {
@@ -272,6 +282,15 @@ const HomePage = () => {
     return () => {
       cancel = true;
     };
+  }, []);
+
+  useEffect(() => {
+    const n = HERO_CAROUSEL_SLIDES.length;
+    if (n < 2) return undefined;
+    const id = setInterval(() => {
+      setHeroSlide((i) => (i + 1) % n);
+    }, 5500);
+    return () => clearInterval(id);
   }, []);
 
   const productosTemporada = useMemo(
@@ -603,19 +622,20 @@ const HomePage = () => {
       />
 
       <section className="relative min-h-[85vh] flex items-center overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-emerald-50 via-white to-amber-50"></div>
-        <div className="absolute top-20 right-10 w-72 h-72 bg-emerald-200/30 rounded-full blur-3xl"></div>
-        <div className="absolute bottom-10 left-10 w-96 h-96 bg-amber-200/20 rounded-full blur-3xl"></div>
+        {/* Tonos inspirados en Starbucks: menta suave #d4e9e2 + neutros cálidos */}
+        <div className="absolute inset-0 bg-gradient-to-br from-[#d4e9e2]/75 via-white to-[#f6f4ef]"></div>
+        <div className="absolute top-20 right-10 h-72 w-72 rounded-full bg-[#006241]/14 blur-3xl"></div>
+        <div className="absolute bottom-10 left-10 h-96 w-96 rounded-full bg-[#1e3932]/10 blur-3xl"></div>
 
         <div className="relative max-w-7xl mx-auto px-6 py-20 z-10">
           <div className="flex flex-col lg:flex-row items-center justify-between gap-12">
             <div className="lg:w-1/2 text-center lg:text-left">
-              <div className="inline-flex items-center gap-2 bg-emerald-100 rounded-full px-4 py-1.5 mb-6">
-                <span className="text-emerald-700 text-sm font-semibold">Producto Peruano</span>
+              <div className="inline-flex items-center gap-2 rounded-full border border-[#006241]/20 bg-[#006241]/10 px-4 py-1.5 mb-6">
+                <span className="text-sm font-semibold text-[#006241]">Producto Peruano</span>
               </div>
-              <h1 className="text-5xl lg:text-7xl font-bold text-gray-900 leading-tight mb-6">
+              <h1 className="text-5xl lg:text-7xl font-bold leading-tight text-[#1e3932] mb-6">
                 Las mejores
-                <span className="text-emerald-600 block">paltas peruanas</span>
+                <span className="block text-[#006241]">paltas peruanas</span>
               </h1>
               <p className="text-gray-500 text-lg mb-8 max-w-lg mx-auto lg:mx-0">
                 Directo del campo a tu mesa. Frescura, calidad y sabor que solo nuestra tierra puede
@@ -628,7 +648,7 @@ const HomePage = () => {
                     const el = document.getElementById("catalogo-productos");
                     el?.scrollIntoView({ behavior: "smooth" });
                   }}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-8 py-3 rounded-full shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105"
+                  className="bg-[#006241] font-semibold text-white shadow-lg transition-all duration-300 hover:bg-[#004d33] hover:shadow-xl transform hover:scale-105 rounded-full px-8 py-3"
                 >
                   Comprar ahora
                 </button>
@@ -638,52 +658,120 @@ const HomePage = () => {
                     const el = document.getElementById("catalogo-destacado");
                     el?.scrollIntoView({ behavior: "smooth" });
                   }}
-                  className="border-2 border-emerald-600 text-emerald-600 hover:bg-emerald-50 font-semibold px-8 py-3 rounded-full transition-all duration-300"
+                  className="rounded-full border-2 border-[#006241] px-8 py-3 font-semibold text-[#006241] transition-all duration-300 hover:bg-[#006241]/10"
                 >
                   Ver ofertas
                 </button>
               </div>
 
-              <div className="flex gap-8 justify-center lg:justify-start mt-12">
+              <p className="mt-5 text-center text-xs font-semibold uppercase tracking-[0.18em] text-[#006241] lg:text-left">
+                MUY PRONTO DISPONIBLE EN TIENDA
+              </p>
+
+              <div className="flex gap-8 justify-center lg:justify-start mt-10">
                 <div>
-                  <div className="text-2xl font-bold text-gray-900">500+</div>
+                  <div className="text-2xl font-bold text-[#1e3932]">500+</div>
                   <div className="text-sm text-gray-400">Clientes felices</div>
                 </div>
                 <div>
-                  <div className="text-2xl font-bold text-gray-900">
+                  <div className="text-2xl font-bold text-[#1e3932]">
                     {loadingProductos ? "…" : productosActivos.length}
                   </div>
                   <div className="text-sm text-gray-400">Productos en catálogo</div>
                 </div>
                 <div>
-                  <div className="text-2xl font-bold text-gray-900">24h</div>
+                  <div className="text-2xl font-bold text-[#1e3932]">24h</div>
                   <div className="text-sm text-gray-400">Entrega rápida</div>
                 </div>
               </div>
             </div>
 
-            <div className="lg:w-1/2 flex justify-center">
-              <div className="relative">
-                <div className="absolute inset-0 bg-emerald-400/20 rounded-full blur-2xl"></div>
-                <img
-                  src={paltasVariadas}
-                  alt="Paltas frescas"
-                  className="relative w-80 lg:w-96 drop-shadow-2xl animate-float"
+            <div className="lg:w-1/2 flex w-full justify-center px-2">
+              <div className="relative w-full max-w-lg lg:max-w-2xl">
+                <div
+                  className="pointer-events-none absolute -inset-6 rounded-[2.5rem] bg-gradient-to-br from-[#006241]/20 via-[#1e3932]/12 to-[#d4e9e2]/40 blur-3xl"
+                  aria-hidden
                 />
+                <div className="relative aspect-[4/3] overflow-hidden rounded-[1.75rem] border border-[#006241]/25 bg-[#1e3932]/[0.03] shadow-[0_28px_80px_-12px_rgba(0,98,65,0.35)] ring-1 ring-[#006241]/15 sm:aspect-[5/4] lg:min-h-[min(52vh,440px)]">
+                  {HERO_CAROUSEL_SLIDES.map((slide, i) => (
+                    <img
+                      key={slide.key}
+                      src={slide.src}
+                      alt={slide.alt}
+                      className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-[900ms] ease-out ${
+                        i === heroSlide
+                          ? "z-10 opacity-100"
+                          : "z-0 opacity-0 pointer-events-none"
+                      }`}
+                      loading={i === 0 ? "eager" : "lazy"}
+                      draggable={false}
+                    />
+                  ))}
+                  <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-[#1e3932]/95 via-[#1e3932]/50 to-transparent px-5 pb-5 pt-20 sm:px-6">
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#d4e9e2]">
+                      {HERO_CAROUSEL_SLIDES[heroSlide].label}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    aria-label="Imagen anterior"
+                    onClick={() =>
+                      setHeroSlide((s) =>
+                        (s - 1 + HERO_CAROUSEL_SLIDES.length) % HERO_CAROUSEL_SLIDES.length
+                      )
+                    }
+                    className="absolute left-3 top-1/2 z-20 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-white/25 bg-white/15 text-white shadow-lg backdrop-blur-md transition hover:bg-white/25"
+                  >
+                    <span className="text-lg leading-none" aria-hidden>
+                      ‹
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Siguiente imagen"
+                    onClick={() =>
+                      setHeroSlide((s) => (s + 1) % HERO_CAROUSEL_SLIDES.length)
+                    }
+                    className="absolute right-3 top-1/2 z-20 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-white/25 bg-white/15 text-white shadow-lg backdrop-blur-md transition hover:bg-white/25"
+                  >
+                    <span className="text-lg leading-none" aria-hidden>
+                      ›
+                    </span>
+                  </button>
+                  <div
+                    className="absolute bottom-3 left-1/2 z-20 flex -translate-x-1/2 gap-2"
+                    role="tablist"
+                    aria-label="Seleccionar imagen"
+                  >
+                    {HERO_CAROUSEL_SLIDES.map((_, i) => (
+                      <button
+                        key={String(i)}
+                        type="button"
+                        role="tab"
+                        aria-selected={i === heroSlide}
+                        aria-label={`Ir a imagen ${i + 1}`}
+                        onClick={() => setHeroSlide(i)}
+                        className={`h-2 rounded-full transition-all duration-300 ${
+                          i === heroSlide ? "w-8 bg-white" : "w-2 bg-white/40 hover:bg-white/60"
+                        }`}
+                      />
+                    ))}
+                  </div>
+                </div>
               </div>
             </div>
           </div>
         </div>
       </section>
 
-      <section className="border-t border-emerald-100/80 bg-gradient-to-b from-white via-emerald-50/40 to-white py-18 lg:py-24">
+      <section className="border-t border-[#d4e9e2]/80 bg-gradient-to-b from-white via-[#eef7f3]/95 to-white py-18 lg:py-24">
         <div className="mx-auto max-w-7xl px-6">
           <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-12 items-center">
             <div className="text-center lg:text-left">
-              <span className="inline-flex items-center gap-2 bg-emerald-100 rounded-full px-7 py-3 border border-emerald-200/70 shadow-sm">
-                <span className="text-emerald-800 text-lg font-bold">Modo saludable</span>
+              <span className="inline-flex items-center gap-2 rounded-full border border-[#006241]/25 bg-[#006241]/10 px-7 py-3 shadow-sm">
+                <span className="text-lg font-bold text-[#006241]">Modo saludable</span>
               </span>
-              <h2 className="mt-5 text-4xl lg:text-5xl font-extrabold text-slate-900">
+              <h2 className="mt-5 text-4xl lg:text-5xl font-extrabold text-[#1e3932]">
                 Beneficios de la palta
               </h2>
               <p className="mt-4 text-lg text-slate-600 max-w-2xl mx-auto lg:mx-0">
@@ -693,7 +781,7 @@ const HomePage = () => {
                 <button
                   type="button"
                   onClick={() => (window.location.href = "/recetas-palta")}
-                  className="inline-flex items-center justify-center gap-2 rounded-full bg-emerald-700 px-7 py-3 text-base font-semibold text-white shadow-lg transition hover:bg-emerald-800 hover:shadow-xl"
+                  className="inline-flex items-center justify-center gap-2 rounded-full bg-[#006241] px-7 py-3 text-base font-semibold text-white shadow-lg transition hover:bg-[#004d33] hover:shadow-xl"
                 >
                   <span>Mira las recetas con palta</span>
                   <span aria-hidden>→</span>
@@ -705,7 +793,7 @@ const HomePage = () => {
               <img
                 src={infoNutri}
                 alt="Beneficios de la palta"
-                className="w-full max-w-lg rounded-3xl shadow-xl border border-emerald-100 bg-white"
+                className="w-full max-w-lg rounded-3xl border border-[#d4e9e2]/90 bg-white shadow-xl"
                 loading="lazy"
               />
             </div>
@@ -715,14 +803,14 @@ const HomePage = () => {
 
       <section
         id="catalogo-destacado"
-        className="border-y border-emerald-100/80 bg-gradient-to-b from-emerald-50/70 via-white to-amber-50/30 py-16 lg:py-24"
+        className="border-y border-[#d4e9e2]/90 bg-gradient-to-b from-[#eef7f3]/90 via-white to-[#f6f4ef]/80 py-16 lg:py-24"
       >
         <div className="mx-auto max-w-7xl px-4 sm:px-6">
-          <div className="mb-10 border-b border-emerald-200/50 pb-10 text-center sm:text-left">
-            <span className="inline-block text-sm font-bold uppercase tracking-[0.18em] text-emerald-700 sm:text-base">
+          <div className="mb-10 border-b border-[#006241]/15 pb-10 text-center sm:text-left">
+            <span className="inline-block text-sm font-bold uppercase tracking-[0.18em] text-[#006241] sm:text-base">
               CATALOGO
             </span>
-            <h2 className="mt-3 text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl lg:text-5xl">
+            <h2 className="mt-3 text-3xl font-bold tracking-tight text-[#1e3932] sm:text-4xl lg:text-5xl">
               Productos de Temporada
             </h2>
             <p className="mt-3 max-w-2xl text-base leading-relaxed text-slate-600 sm:text-lg lg:text-xl">
@@ -741,11 +829,11 @@ const HomePage = () => {
               {productosTemporada.map((product, idx) => (
                 <article
                   key={idProducto(product._id)}
-                  className="group flex flex-col overflow-hidden rounded-2xl border border-emerald-100/90 bg-white shadow-md transition-all duration-300 hover:-translate-y-0.5 hover:border-emerald-300/80 hover:shadow-xl"
+                  className="group flex flex-col overflow-hidden rounded-2xl border border-[#d4e9e2] bg-white shadow-md transition-all duration-300 hover:-translate-y-0.5 hover:border-[#006241]/35 hover:shadow-xl"
                 >
-                  <div className="relative aspect-[4/3] bg-gradient-to-b from-white to-emerald-50/50">
+                  <div className="relative aspect-[4/3] bg-gradient-to-b from-white to-[#eef7f3]/80">
                     {idx === 0 && (
-                      <span className="absolute left-3 top-3 z-10 rounded-full bg-emerald-700 px-3 py-1 text-[10px] font-bold uppercase tracking-wide text-white shadow-md">
+                      <span className="absolute left-3 top-3 z-10 rounded-full bg-[#006241] px-3 py-1 text-[10px] font-bold uppercase tracking-wide text-white shadow-md">
                         Destacado
                       </span>
                     )}
@@ -755,7 +843,7 @@ const HomePage = () => {
                       className="h-full w-full object-contain p-4 transition-transform duration-300 group-hover:scale-[1.04]"
                     />
                   </div>
-                  <div className="flex flex-1 flex-col border-t border-emerald-100/80 p-4 sm:p-5">
+                  <div className="flex flex-1 flex-col border-t border-[#d4e9e2]/90 p-4 sm:p-5">
                     <div className="flex items-start justify-between gap-2">
                       <h3 className="line-clamp-2 text-lg font-bold leading-snug text-slate-900">
                         {tituloConTipo(product)}
@@ -768,8 +856,8 @@ const HomePage = () => {
                     <p className="mt-3 line-clamp-3 text-sm leading-snug text-slate-700 sm:text-base">
                       {product.descripcionCorta}
                     </p>
-                    <div className="mt-auto flex items-baseline gap-1 border-t border-emerald-50 pt-4">
-                      <span className="text-xl font-bold tabular-nums text-emerald-600">
+                    <div className="mt-auto flex items-baseline gap-1 border-t border-[#eef7f3] pt-4">
+                      <span className="text-xl font-bold tabular-nums text-[#006241]">
                         S/ {product.precio.toFixed(2)}
                       </span>
                       <span className="text-sm text-slate-500">/ kg</span>
@@ -777,7 +865,7 @@ const HomePage = () => {
                     <button
                       type="button"
                       onClick={() => setSelectedProduct(product)}
-                      className="mt-4 w-full rounded-full bg-emerald-600 py-3 text-center text-sm font-semibold text-white shadow-md transition-all duration-300 hover:bg-emerald-700 hover:shadow-lg"
+                      className="mt-4 w-full rounded-full bg-[#006241] py-3 text-center text-sm font-semibold text-white shadow-md transition-all duration-300 hover:bg-[#004d33] hover:shadow-lg"
                     >
                       Ver ficha de producto
                     </button>
@@ -790,7 +878,7 @@ const HomePage = () => {
       </section>
 
       <section className="py-20 relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-r from-emerald-700 to-emerald-800"></div>
+        <div className="absolute inset-0 bg-gradient-to-r from-[#006241] to-[#1e3932]"></div>
         <div className="absolute inset-0 opacity-10">
           <div className="absolute top-10 left-10 w-40 h-40 bg-white rounded-full"></div>
           <div className="absolute bottom-10 right-10 w-60 h-60 bg-white rounded-full"></div>
@@ -801,7 +889,7 @@ const HomePage = () => {
             <h2 className="text-3xl lg:text-4xl font-bold text-white mb-2">
               31 de julio Día Internacional de la Palta
             </h2>
-            <p className="text-emerald-200 text-lg max-w-4xl mx-auto">
+            <p className="max-w-4xl mx-auto text-lg text-[#d4e9e2]">
               Todos los dias celebramos el placer de una buena palta
               <br />
               <span className="block mt-4 sm:mt-5 text-3xl sm:text-4xl font-bold leading-tight tracking-tight px-1">
@@ -844,7 +932,7 @@ const HomePage = () => {
                     {etiqueta}
                   </p>
                   <div className="mt-4">
-                    <span className="text-3xl font-bold text-emerald-600">
+                    <span className="text-3xl font-bold text-[#006241]">
                       {precioOk ? `S/ ${precioPack.toFixed(2)}` : "S/ —"}
                     </span>
                   </div>
@@ -854,7 +942,7 @@ const HomePage = () => {
                     onClick={() => product && setSelectedProduct(product)}
                     className={`mt-5 w-full rounded-full py-2.5 font-semibold transition-all duration-300 ${
                       product
-                        ? "bg-emerald-600 text-white hover:bg-emerald-700"
+                        ? "bg-[#006241] text-white hover:bg-[#004d33]"
                         : "cursor-not-allowed bg-gray-200 text-gray-500"
                     }`}
                   >
@@ -868,11 +956,11 @@ const HomePage = () => {
       </section>
 
       <section className="relative overflow-hidden bg-white py-16 lg:py-24">
-        <div className="absolute inset-0 bg-gradient-to-b from-white via-emerald-50/40 to-white" />
+        <div className="absolute inset-0 bg-gradient-to-b from-white via-[#eef7f3]/70 to-white" />
         <div className="relative mx-auto max-w-7xl px-6">
           <div className="mx-auto max-w-3xl text-center">
-            <span className="inline-flex items-center gap-2 rounded-full bg-emerald-100 px-5 py-2">
-              <span className="text-emerald-800 text-sm font-bold tracking-wide uppercase">
+            <span className="inline-flex items-center gap-2 rounded-full border border-[#006241]/25 bg-[#006241]/10 px-5 py-2">
+              <span className="text-sm font-bold uppercase tracking-wide text-[#006241]">
                 Del campo a tu mesa
               </span>
             </span>
@@ -919,16 +1007,16 @@ const HomePage = () => {
             ].map((step) => (
               <div
                 key={step.n}
-                className="group overflow-hidden rounded-3xl border border-emerald-100 bg-white shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-xl"
+                className="group overflow-hidden rounded-3xl border border-[#d4e9e2] bg-white shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-xl"
               >
-                <div className="relative aspect-[4/3] bg-gradient-to-b from-emerald-50 to-white">
+                <div className="relative aspect-[4/3] bg-gradient-to-b from-[#eef7f3] to-white">
                   <img
                     src={step.img}
                     alt={step.t}
                     className="h-full w-full object-cover"
                     loading="lazy"
                   />
-                  <div className="absolute left-4 top-4 rounded-full bg-white/90 px-3 py-1 text-xs font-extrabold text-emerald-800 shadow">
+                  <div className="absolute left-4 top-4 rounded-full bg-white/90 px-3 py-1 text-xs font-extrabold text-[#006241] shadow">
                     {step.n}
                   </div>
                 </div>
@@ -946,12 +1034,12 @@ const HomePage = () => {
 
           <div className="mt-10 hidden lg:block">
             <div className="relative mx-auto max-w-6xl">
-              <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-[2px] bg-emerald-200/70" />
+              <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-[2px] bg-[#006241]/25" />
               <div className="grid grid-cols-5 gap-6">
                 {["Sembrío", "Cosecha", "Traslado", "Clasificación", "Local"].map((label) => (
                   <div key={label} className="flex flex-col items-center gap-3">
-                    <div className="h-3 w-3 rounded-full bg-emerald-600 ring-4 ring-emerald-100" />
-                    <span className="text-xs font-bold text-emerald-900 uppercase tracking-wide">
+                    <div className="h-3 w-3 rounded-full bg-[#006241] ring-4 ring-[#d4e9e2]/80" />
+                    <span className="text-xs font-bold uppercase tracking-wide text-[#1e3932]">
                       {label}
                     </span>
                   </div>
@@ -965,7 +1053,7 @@ const HomePage = () => {
       <section id="catalogo-productos" className="py-20 bg-white">
         <div className="max-w-7xl mx-auto px-6">
           <div className="text-center mb-12">
-            <h2 className="text-3xl lg:text-4xl font-bold text-gray-900 mb-3">
+            <h2 className="mb-3 text-3xl font-bold text-[#1e3932] lg:text-4xl">
               Conoce nuestros productos
             </h2>
           </div>
@@ -984,7 +1072,7 @@ const HomePage = () => {
                 onClick={() => setFilterCategoria(filter.id)}
                 className={`px-5 py-2 rounded-full text-sm font-medium transition-all duration-300 ${
                   filterCategoria === filter.id
-                    ? "bg-emerald-600 text-white shadow-md"
+                    ? "bg-[#006241] text-white shadow-md"
                     : "bg-gray-100 text-gray-600 hover:bg-gray-200"
                 }`}
               >
@@ -994,9 +1082,9 @@ const HomePage = () => {
           </div>
 
           {FILTROS_PANEL_VARIEDAD.has(filterCategoria) && PANEL_VARIEDAD[filterCategoria] && (
-            <div className="mb-10 flex flex-col gap-6 rounded-2xl border border-emerald-200/80 bg-gradient-to-br from-emerald-50 to-white p-6 shadow-sm lg:flex-row lg:items-stretch lg:gap-10 lg:p-8">
+            <div className="mb-10 flex flex-col gap-6 rounded-2xl border border-[#006241]/20 bg-gradient-to-br from-[#eef7f3]/95 to-white p-6 shadow-sm lg:flex-row lg:items-stretch lg:gap-10 lg:p-8">
               <div className="min-w-0 flex-1 space-y-5 text-left text-sm leading-relaxed text-gray-700">
-                <h3 className="text-xl font-bold text-emerald-900">{PANEL_VARIEDAD[filterCategoria].titulo}</h3>
+                <h3 className="text-xl font-bold text-[#1e3932]">{PANEL_VARIEDAD[filterCategoria].titulo}</h3>
                 <div>
                   <h4 className="mb-1 font-semibold text-gray-900">Historia breve</h4>
                   <p>{PANEL_VARIEDAD[filterCategoria].historia}</p>
@@ -1014,7 +1102,7 @@ const HomePage = () => {
                   <p>{PANEL_VARIEDAD[filterCategoria].exportacion}</p>
                 </div>
               </div>
-              <div className="flex shrink-0 flex-col justify-center border-t border-emerald-100 pt-6 lg:w-52 lg:border-l lg:border-t-0 lg:pl-8 lg:pt-0">
+              <div className="flex shrink-0 flex-col justify-center border-t border-[#d4e9e2] pt-6 lg:w-52 lg:border-l lg:border-t-0 lg:pl-8 lg:pt-0">
                 <button
                   type="button"
                   disabled={!primerProductoVariedad[filterCategoria]}
@@ -1024,17 +1112,15 @@ const HomePage = () => {
                   }}
                   className={`w-full rounded-full px-6 py-3 text-center text-base font-semibold shadow-md transition-all duration-300 lg:w-auto ${
                     primerProductoVariedad[filterCategoria]
-                      ? "bg-emerald-600 text-white hover:bg-emerald-700 hover:shadow-lg"
+                      ? "bg-[#006241] text-white hover:bg-[#004d33] hover:shadow-lg"
                       : "cursor-not-allowed bg-gray-200 text-gray-500"
                   }`}
                 >
                   Comprar ahora
                 </button>
-                {!primerProductoVariedad[filterCategoria] && !loadingProductos && (
-                  <p className="mt-2 text-center text-xs text-gray-500 lg:text-left">
-                    Pronto habrá {PANEL_VARIEDAD[filterCategoria].etiquetaSinStock} disponible en catálogo.
-                  </p>
-                )}
+                <p className="mt-2 text-center text-xs font-semibold tracking-wide text-[#006241] lg:text-left">
+                  MUY PRONTO DISPONIBLE EN TIENDA
+                </p>
               </div>
             </div>
           )}
@@ -1065,7 +1151,7 @@ const HomePage = () => {
                   </div>
                   <h3 className="font-semibold text-gray-900 text-sm">{tituloConTipo(product)}</h3>
                   <div className="mt-3">
-                    <span className="text-xl font-bold text-emerald-600">
+                    <span className="text-xl font-bold text-[#006241]">
                       S/ {product.precio.toFixed(2)}
                     </span>
                     <span className="text-xs text-gray-400"> /kg</span>
@@ -1073,7 +1159,7 @@ const HomePage = () => {
                   <button
                     type="button"
                     onClick={() => setSelectedProduct(product)}
-                    className="mt-3 w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2 rounded-full text-sm transition-all duration-300"
+                    className="mt-3 w-full rounded-full bg-[#006241] py-2 text-sm font-semibold text-white transition-all duration-300 hover:bg-[#004d33]"
                   >
                     Ver producto
                   </button>
