@@ -29,6 +29,18 @@ const readTrabajador = () => {
 /** Vendedor: solo caja + ventas. Resto de roles: panel completo. */
 const isPanelVendedor = (t) => t?.rol === "Vendedor";
 
+const etiquetaRolSidebar = (t) => {
+  if (!t?.rol) return "—";
+  if (t.rol === "Vendedor") return "VENDEDOR";
+  if (t.rol === "Administrador de sistemas") return "ADMINISTRADOR DEL SISTEMA";
+  return String(t.rol).toUpperCase();
+};
+
+const nombreCompletoSidebar = (t) => {
+  const partes = [t?.nombres, t?.apellidos].filter(Boolean).map((s) => String(s).trim());
+  return partes.length ? partes.join(" ").toUpperCase() : "";
+};
+
 const sameLocalDay = (a, b) => {
   const d1 = new Date(a);
   const d2 = new Date(b);
@@ -1556,13 +1568,15 @@ const AdminDashboard = () => {
     <div className="min-h-screen flex bg-lime-100 font-sans">
       <aside className="w-64 bg-emerald-950 text-lime-50 flex flex-col shadow-2xl z-10 flex-shrink-0">
         <div className="p-6 border-b border-emerald-800">
-          <p className="text-xs text-emerald-400 uppercase tracking-widest mb-1">
-            {isPanelVendedor(trabajadorSesion) ? "Panel vendedor" : "Panel Admin"}
+          <h1 className="text-sm font-bold leading-snug tracking-wide text-white uppercase">
+            FRUTERIA SEÑOR DE MURUHUAY
+          </h1>
+          <p className="text-xs text-emerald-300/95 mt-3 uppercase tracking-wide">
+            ROL: {etiquetaRolSidebar(trabajadorSesion)}
           </p>
-          <h1 className="text-base font-bold leading-tight">Frutería Señor de Muruhuay</h1>
-          {trabajadorSesion?.nombres && (
-            <p className="text-xs text-emerald-300/90 mt-2">
-              {trabajadorSesion.nombres} {trabajadorSesion.apellidos || ""}
+          {nombreCompletoSidebar(trabajadorSesion) && (
+            <p className="text-xs text-emerald-300/95 mt-1.5 uppercase tracking-wide">
+              NOMBRE: {nombreCompletoSidebar(trabajadorSesion)}
             </p>
           )}
         </div>

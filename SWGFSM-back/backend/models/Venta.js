@@ -72,6 +72,37 @@ const ventaSchema = new mongoose.Schema({
     enum: ['CAJA', 'ONLINE'],
     required: false
   },
+  /** TIENDA = recojo en local; METROPOLITANO = entrega en estación acordada */
+  tipoEntrega: {
+    type: String,
+    enum: ['TIENDA', 'METROPOLITANO'],
+    required: false
+  },
+  estacionMetropolitanoId: {
+    type: String,
+    required: false,
+    trim: true
+  },
+  estacionMetropolitanoNombre: {
+    type: String,
+    required: false,
+    trim: true
+  },
+  estacionMetropolitanoLinea: {
+    type: String,
+    required: false,
+    trim: true
+  },
+  estacionReferencia: {
+    type: String,
+    required: false,
+    trim: true
+  },
+  tiendaDireccion: {
+    type: String,
+    required: false,
+    trim: true
+  },
   comprobante: {
     type: String,
     enum: ['Boleta', 'Factura'],

@@ -39,6 +39,18 @@ const VentasAdmin = () => {
     return "SIN";
   };
 
+  const etiquetaEntrega = (venta) => {
+    if (venta?.tipoEntrega === "METROPOLITANO") {
+      const nom = venta.estacionMetropolitanoNombre || "Estación";
+      const lin = venta.estacionMetropolitanoLinea ? ` (${venta.estacionMetropolitanoLinea})` : "";
+      return `Metropolitano — ${nom}${lin}`;
+    }
+    if (venta?.tipoEntrega === "TIENDA") {
+      return venta.tiendaDireccion ? `Recojo en tienda — ${venta.tiendaDireccion}` : "Recojo en tienda";
+    }
+    return null;
+  };
+
   // Cargar ventas
   const fetchVentas = async () => {
     try {
@@ -471,6 +483,16 @@ const VentasAdmin = () => {
                   <p className="text-sm text-gray-700 mt-2">
                     Total: <span className="font-extrabold text-emerald-700">S/ {(ventaDetalle.total || 0).toFixed(2)}</span>
                   </p>
+                  {etiquetaEntrega(ventaDetalle) && (
+                    <p className="text-sm text-gray-700 mt-2">
+                      Entrega: <span className="font-semibold">{etiquetaEntrega(ventaDetalle)}</span>
+                    </p>
+                  )}
+                  {ventaDetalle.tipoEntrega === "METROPOLITANO" && ventaDetalle.estacionReferencia && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Punto de encuentro: {ventaDetalle.estacionReferencia}
+                    </p>
+                  )}
                 </div>
               </div>
 

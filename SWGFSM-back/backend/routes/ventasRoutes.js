@@ -7,6 +7,7 @@ const express = require('express');
 const PDFDocument = require('pdfkit');
 const Venta = require('../models/Venta');
 const Producto = require('../models/Producto');
+const EstacionMetropolitano = require('../models/EstacionMetropolitano');
 const nodemailer = require('nodemailer');
 
 const router = express.Router();
@@ -235,6 +236,29 @@ const textoOrigenVenta = (venta) => {
   return 'No indicado';
 };
 
+const DIRECCION_TIENDA_DEFAULT =
+  process.env.BUSINESS_ADDRESS || 'Av. Mercado Caqueta N° 800, RIMAC';
+
+const normalizeTipoEntrega = (v) => {
+  const t = String(v || '').trim().toUpperCase();
+  return t === 'METROPOLITANO' || t === 'TIENDA' ? t : '';
+};
+
+const textoEntregaVenta = (venta) => {
+  const tipo = normalizeTipoEntrega(venta?.tipoEntrega);
+  if (tipo === 'METROPOLITANO') {
+    const nom = venta?.estacionMetropolitanoNombre || 'Estación Metropolitano';
+    const lin = venta?.estacionMetropolitanoLinea ? ` (${venta.estacionMetropolitanoLinea})` : '';
+    const ref = venta?.estacionReferencia ? ` — ${venta.estacionReferencia}` : '';
+    return `Entrega en estación Metropolitano: ${nom}${lin}${ref}`;
+  }
+  if (tipo === 'TIENDA') {
+    const dir = venta?.tiendaDireccion || DIRECCION_TIENDA_DEFAULT;
+    return `Recojo en tienda: ${dir}`;
+  }
+  return '';
+};
+
 const getBusinessConfig = () => ({
   logoUrl: process.env.BUSINESS_LOGO_URL || '',
   nombre: process.env.BUSINESS_NAME || 'COMERCIALIZADORA DE FRUTAS SEÑOR DE MURUHUAY',
@@ -328,6 +352,7 @@ const generateComprobanteHTML = (venta) => {
                 <div><strong>Hora:</strong> ${escapeHtml(horaStr)}</div>
                 <div><strong>Cond. de pago:</strong> ${escapeHtml(venta?.metodoPago || '')}</div>
                 <div><strong>Origen:</strong> ${escapeHtml(textoOrigenVenta(venta))}</div>
+                ${textoEntregaVenta(venta) ? `<div><strong>Entrega:</strong> ${escapeHtml(textoEntregaVenta(venta))}</div>` : ''}
               </div>
             </div>
           </div>
@@ -421,7 +446,9 @@ const generateComprobantePDFBuffer = (venta) =>
     doc.fontSize(11).text(`N° ${numero}`, boxR + 6, headerTop + 50, { width: 166, align: 'center' });
 
     y = Math.max(y, headerTop + 82);
-    doc.rect(left, y, width, 70).stroke();
+    const entregaTxt = textoEntregaVenta(venta);
+    const infoBoxH = entregaTxt ? 94 : 70;
+    doc.rect(left, y, width, infoBoxH).stroke();
     let iy = y + 8;
     doc.font('Helvetica').fontSize(9);
     doc.text(`Cliente: ${venta?.cliente || '—'}`, left + 8, iy);
@@ -447,8 +474,12 @@ const generateComprobantePDFBuffer = (venta) =>
     doc.text(`Cond. de pago: ${venta?.metodoPago || '—'}`, col2, iy);
     iy += 12;
     doc.text(`Origen: ${textoOrigenVenta(venta)}`, col2, iy);
+    iy += 12;
+    if (entregaTxt) {
+      doc.text(`Entrega: ${entregaTxt}`, col2, iy, { width: 200 });
+    }
 
-    y += 74;
+    y += infoBoxH + 4;
     doc.rect(left, y, width, 16).stroke();
     doc.font('Helvetica-Bold').fontSize(8);
     const c1 = left + 6;
@@ -643,6 +674,34 @@ router.post('/', async (req, res) => {
       stockDescontado: false
     };
     if (origenVenta) ventaData.origen = origenVenta;
+
+    const tipoEntrega = normalizeTipoEntrega(req.body.tipoEntrega);
+    if (origenVenta === 'ONLINE' && !tipoEntrega) {
+      return res.status(400).json({
+        message: 'Indica si recogerás en tienda o deseas entrega en estación Metropolitano.',
+      });
+    }
+    if (tipoEntrega) {
+      ventaData.tipoEntrega = tipoEntrega;
+      if (tipoEntrega === 'METROPOLITANO') {
+        const estId = String(req.body.estacionMetropolitanoId || '').trim();
+        if (!estId) {
+          return res.status(400).json({ message: 'Selecciona una estación del Metropolitano.' });
+        }
+        const est = await EstacionMetropolitano.findOne({ _id: estId, activa: true }).lean();
+        if (!est) {
+          return res.status(400).json({
+            message: 'La estación Metropolitano seleccionada no está disponible.',
+          });
+        }
+        ventaData.estacionMetropolitanoId = String(est._id);
+        ventaData.estacionMetropolitanoNombre = est.nombre;
+        ventaData.estacionMetropolitanoLinea = est.linea;
+        ventaData.estacionReferencia = est.referencia || '';
+      } else {
+        ventaData.tiendaDireccion = String(req.body.tiendaDireccion || DIRECCION_TIENDA_DEFAULT).trim();
+      }
+    }
     
     console.log('📦 Venta a guardar:', JSON.stringify(ventaData, null, 2));
     

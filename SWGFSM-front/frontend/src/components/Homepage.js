@@ -401,7 +401,7 @@ const HomePage = () => {
     setShowPayment(true);
   };
 
-  const handlePaymentSuccess = async () => {
+  const handlePaymentSuccess = async (deliveryInfo = {}) => {
     const lineasDesdeItem = (item) => {
       const pu = precioNum(item.precioUnitario);
       const tipoStr =
@@ -482,6 +482,14 @@ const HomePage = () => {
       comprobante: "Boleta",
       estado: "Pendiente",
       origen: "ONLINE",
+      tipoEntrega: deliveryInfo.tipoEntrega || "TIENDA",
+      ...(deliveryInfo.tipoEntrega === "METROPOLITANO"
+        ? {
+            estacionMetropolitanoId: deliveryInfo.estacionMetropolitanoId,
+          }
+        : {
+            tiendaDireccion: deliveryInfo.tiendaDireccion,
+          }),
     };
 
     try {
@@ -497,17 +505,25 @@ const HomePage = () => {
         const order = {
           id: ventaGuardada._id,
           numeroVenta: ventaGuardada.numeroVenta,
-          date: new Date().toISOString(),
-          total,
-          items: cartItems.map(({ name, measure, quantity, price, productoId, esBuckets, kgPorMadurez }) => ({
-            name,
-            measure,
-            quantity,
-            price,
-            productoId,
-            ...(esBuckets && kgPorMadurez ? { esBuckets: true, kgPorMadurez } : {}),
-          })),
-          estado: "Pendiente",
+          fecha: ventaGuardada.fecha,
+          date: ventaGuardada.fecha || new Date().toISOString(),
+          total: ventaGuardada.total ?? total,
+          subtotal: ventaGuardada.subtotal ?? total,
+          cliente,
+          clienteEmail,
+          clienteTelefono,
+          metodoPago: ventaGuardada.metodoPago || selectedPaymentMethod,
+          comprobante: ventaGuardada.comprobante || "Boleta",
+          origen: ventaGuardada.origen || "ONLINE",
+          productos: ventaGuardada.productos || productos,
+          items: ventaGuardada.productos || cartItems,
+          estado: ventaGuardada.estado || "Pendiente",
+          tipoEntrega: ventaGuardada.tipoEntrega,
+          estacionMetropolitanoId: ventaGuardada.estacionMetropolitanoId,
+          estacionMetropolitanoNombre: ventaGuardada.estacionMetropolitanoNombre,
+          estacionMetropolitanoLinea: ventaGuardada.estacionMetropolitanoLinea,
+          estacionReferencia: ventaGuardada.estacionReferencia,
+          tiendaDireccion: ventaGuardada.tiendaDireccion,
         };
 
         let byClient = {};
@@ -663,10 +679,6 @@ const HomePage = () => {
                   Ver ofertas
                 </button>
               </div>
-
-              <p className="mt-5 text-center text-xs font-semibold uppercase tracking-[0.18em] text-[#006241] lg:text-left">
-                MUY PRONTO DISPONIBLE EN TIENDA
-              </p>
 
               <div className="flex gap-8 justify-center lg:justify-start mt-10">
                 <div>
@@ -1118,9 +1130,11 @@ const HomePage = () => {
                 >
                   Comprar ahora
                 </button>
-                <p className="mt-2 text-center text-xs font-semibold tracking-wide text-[#006241] lg:text-left">
-                  MUY PRONTO DISPONIBLE EN TIENDA
-                </p>
+                {filterCategoria === "naval" && (
+                  <p className="mt-2 text-center text-xs font-semibold uppercase tracking-wide text-[#006241] lg:text-left">
+                    MUY PRONTO DISPONIBLE EN TIENDA
+                  </p>
+                )}
               </div>
             </div>
           )}
