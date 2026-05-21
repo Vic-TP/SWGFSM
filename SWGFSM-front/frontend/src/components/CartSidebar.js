@@ -2,6 +2,18 @@
 
 import React from "react";
 
+function resumenKgLineaCarrito(item) {
+  if (item?.esBuckets && item.kgPorMadurez) {
+    const k = item.kgPorMadurez;
+    const partes = [];
+    if (Math.floor(Number(k.verde) || 0) > 0) partes.push(`Verde ${Math.floor(k.verde)} kg`);
+    if (Math.floor(Number(k.sazon) || 0) > 0) partes.push(`Sazón ${Math.floor(k.sazon)} kg`);
+    if (Math.floor(Number(k.maduro) || 0) > 0) partes.push(`Maduro ${Math.floor(k.maduro)} kg`);
+    if (partes.length) return partes.join(" · ");
+  }
+  return null;
+}
+
 const CartSidebar = ({ isOpen, items, onClose, onCheckout, onRemoveItem, total }) => {
   if (!isOpen) return null;
 
@@ -40,7 +52,7 @@ const CartSidebar = ({ isOpen, items, onClose, onCheckout, onRemoveItem, total }
             <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
               {items.map((item) => (
                 <div
-                  key={`${item.productoId || item.id}-${item.measure}`}
+                  key={`${item.productoId || item.id}-${item.measure || "1kg"}-${item.esBuckets ? "b" : "l"}`}
                   className="flex gap-3 pb-4 border-b"
                 >
                   <div className="w-16 h-16 bg-lime-50 rounded-xl flex items-center justify-center">
@@ -48,10 +60,17 @@ const CartSidebar = ({ isOpen, items, onClose, onCheckout, onRemoveItem, total }
                   </div>
                   <div className="flex-1">
                     <p className="font-semibold text-sm text-gray-900">{item.name}</p>
+                    {item.tipo != null && String(item.tipo).trim() !== "" && String(item.tipo).trim() !== "—" ? (
+                      <p className="text-xs text-amber-900/90 font-medium mt-0.5">Tipo: {String(item.tipo).trim()}</p>
+                    ) : null}
                     <p className="text-xs text-gray-400 mt-0.5">
-                      {item.measure === "1kg" || !item.measure
-                        ? `${item.cantidadKg ?? item.quantity} kg`
-                        : `${item.measure} × ${item.quantity}`}
+                      {(() => {
+                        const res = resumenKgLineaCarrito(item);
+                        if (res) return res;
+                        return item.measure === "1kg" || !item.measure
+                          ? `${item.cantidadKg ?? item.quantity} kg`
+                          : `${item.measure} × ${item.quantity}`;
+                      })()}
                     </p>
                     {typeof onRemoveItem === "function" && (
                       <button

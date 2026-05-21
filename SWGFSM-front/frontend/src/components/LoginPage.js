@@ -1,9 +1,12 @@
 // src/components/LoginPage.js - CORREGIDO
 
-import React, { useState } from "react";  // ← Eliminado useEffect
+import React, { useState } from "react"; // ← Eliminado useEffect
 import PasswordInput from "./PasswordInput";
 
 const API_URL_CLIENTES = "http://localhost:5000/api/clientes";
+
+const inputClass =
+  "w-full rounded-xl border border-[#d4e9e2] bg-white px-4 py-2.5 text-[#1e3932] placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#006241]/35 focus:border-[#006241]/45";
 
 /** Respuesta del API (nombres/correo) → forma usada en el front (nombre/email) */
 const mapServerCliente = (doc) => {
@@ -136,38 +139,41 @@ const LoginPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-lime-200 flex flex-col">
-      <header className="bg-lime-400 text-emerald-900 px-10 py-4 flex items-center justify-between shadow-md">
-        <h1 className="font-mono text-lg md:text-xl font-semibold">
-          Fruteria Señor de Muruhuay - Acceso
+    <div className="flex min-h-screen flex-col bg-gradient-to-br from-[#d4e9e2]/55 via-white to-[#f6f4ef]">
+      <header className="flex items-center justify-between bg-[#1e3932] px-6 py-4 shadow-md md:px-10">
+        <h1 className="text-base font-semibold tracking-tight text-white md:text-xl">
+          Frutería Señor de Muruhuay — Acceso
         </h1>
         <button
+          type="button"
           onClick={() => (window.location.href = "/")}
-          className="bg-emerald-700 hover:bg-emerald-600 text-lime-50 font-semibold px-6 py-2 rounded-full text-sm shadow-md"
+          className="rounded-full bg-[#006241] px-6 py-2 text-sm font-semibold text-white shadow-md transition hover:bg-[#004d33]"
         >
           Volver a la tienda
         </button>
       </header>
 
-      <main className="flex-1 flex items-center justify-center px-4 py-10">
-        <div className="bg-[#E9FFF2] rounded-3xl shadow-2xl w-full max-w-xl p-8 md:p-10">
+      <main className="flex flex-1 items-center justify-center px-4 py-10">
+        <div className="w-full max-w-xl rounded-3xl border border-[#d4e9e2]/90 bg-white p-8 shadow-[0_24px_60px_-12px_rgba(30,57,50,0.18)] md:p-10">
           {/* Tabs */}
-          <div className="flex mb-6 border-b border-emerald-100">
+          <div className="mb-6 flex border-b border-[#006241]/15">
             <button
-              className={`flex-1 py-2 text-center font-semibold ${
+              type="button"
+              className={`flex-1 py-2 text-center text-sm font-semibold transition md:text-base ${
                 !isRegister
-                  ? "text-emerald-900 border-b-4 border-emerald-500"
-                  : "text-emerald-700"
+                  ? "border-b-[3px] border-[#006241] text-[#1e3932]"
+                  : "border-b-[3px] border-transparent text-[#1e3932]/50 hover:text-[#1e3932]/75"
               }`}
               onClick={() => setIsRegister(false)}
             >
-              Iniciar sesion
+              Iniciar sesión
             </button>
             <button
-              className={`flex-1 py-2 text-center font-semibold ${
+              type="button"
+              className={`flex-1 py-2 text-center text-sm font-semibold transition md:text-base ${
                 isRegister
-                  ? "text-emerald-900 border-b-4 border-emerald-500"
-                  : "text-emerald-700"
+                  ? "border-b-[3px] border-[#006241] text-[#1e3932]"
+                  : "border-b-[3px] border-transparent text-[#1e3932]/50 hover:text-[#1e3932]/75"
               }`}
               onClick={() => setIsRegister(true)}
             >
@@ -179,26 +185,22 @@ const LoginPage = () => {
           {!isRegister && (
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-emerald-900 mb-1">
-                  Correo electronico
-                </label>
+                <label className="mb-1 block text-sm font-medium text-[#1e3932]">Correo electrónico</label>
                 <input
                   type="email"
-                  className="w-full rounded-xl border border-emerald-100 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                  className={inputClass}
                   placeholder="tu@email.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
                 />
-                <p className="text-xs text-gray-400 mt-1">
+                <p className="mt-1 text-xs text-gray-500">
                   * Los correos @muruhuay.com acceden como administrador
                 </p>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-emerald-900 mb-1">
-                  Contraseña
-                </label>
+                <label className="mb-1 block text-sm font-medium text-[#1e3932]">Contraseña</label>
                 <PasswordInput
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -207,26 +209,30 @@ const LoginPage = () => {
                 />
               </div>
 
-              <div className="flex items-center justify-between text-xs text-emerald-800">
+              <div className="flex items-center justify-between text-xs text-[#1e3932]/80">
                 <label className="flex items-center gap-2">
                   <input
                     type="checkbox"
                     checked={remember}
                     onChange={(e) => setRemember(e.target.checked)}
-                    className="rounded"
+                    className="rounded border-[#d4e9e2] text-[#006241] focus:ring-[#006241]/40"
                   />
-                  <span>Mantener sesion iniciada</span>
+                  <span>Mantener sesión iniciada</span>
                 </label>
-                <button type="button" className="hover:underline" onClick={() => alert("Contacta con soporte para recuperar tu contrasena")}>
-                  ¿Olvidaste tu contrasena?
+                <button
+                  type="button"
+                  className="hover:text-[#006241] hover:underline"
+                  onClick={() => alert("Contacta con soporte para recuperar tu contraseña")}
+                >
+                  ¿Olvidaste tu contraseña?
                 </button>
               </div>
 
               <button
                 type="submit"
-                className="w-full mt-4 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3 rounded-full shadow-lg transition"
+                className="mt-4 w-full rounded-full bg-[#006241] py-3 font-semibold text-white shadow-lg transition hover:bg-[#004d33]"
               >
-                Iniciar sesion
+                Iniciar sesión
               </button>
             </form>
           )}
@@ -234,29 +240,53 @@ const LoginPage = () => {
           {/* REGISTRO (solo clientes) */}
           {isRegister && (
             <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                 <div>
-                  <label className="block text-sm font-medium text-emerald-900 mb-1">Nombres</label>
-                  <input type="text" className="w-full rounded-xl border border-emerald-100 px-4 py-2" value={regNombre} onChange={(e) => setRegNombre(e.target.value)} required />
+                  <label className="mb-1 block text-sm font-medium text-[#1e3932]">Nombres</label>
+                  <input
+                    type="text"
+                    className={inputClass}
+                    value={regNombre}
+                    onChange={(e) => setRegNombre(e.target.value)}
+                    required
+                  />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-emerald-900 mb-1">Apellidos</label>
-                  <input type="text" className="w-full rounded-xl border border-emerald-100 px-4 py-2" value={regApellidos} onChange={(e) => setRegApellidos(e.target.value)} required />
+                  <label className="mb-1 block text-sm font-medium text-[#1e3932]">Apellidos</label>
+                  <input
+                    type="text"
+                    className={inputClass}
+                    value={regApellidos}
+                    onChange={(e) => setRegApellidos(e.target.value)}
+                    required
+                  />
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-emerald-900 mb-1">Correo electronico</label>
-                <input type="email" className="w-full rounded-xl border border-emerald-100 px-4 py-2" value={regEmail} onChange={(e) => setRegEmail(e.target.value)} required />
+                <label className="mb-1 block text-sm font-medium text-[#1e3932]">Correo electrónico</label>
+                <input
+                  type="email"
+                  className={inputClass}
+                  value={regEmail}
+                  onChange={(e) => setRegEmail(e.target.value)}
+                  required
+                />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-emerald-900 mb-1">Telefono</label>
-                <input type="tel" className="w-full rounded-xl border border-emerald-100 px-4 py-2" value={regTelefono} onChange={(e) => setRegTelefono(e.target.value)} required />
+                <label className="mb-1 block text-sm font-medium text-[#1e3932]">Teléfono</label>
+                <input
+                  type="tel"
+                  className={inputClass}
+                  value={regTelefono}
+                  onChange={(e) => setRegTelefono(e.target.value)}
+                  required
+                />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-emerald-900 mb-1">Contraseña</label>
+                <label className="mb-1 block text-sm font-medium text-[#1e3932]">Contraseña</label>
                 <PasswordInput
                   value={regPassword}
                   onChange={(e) => setRegPassword(e.target.value)}
@@ -265,7 +295,10 @@ const LoginPage = () => {
                 />
               </div>
 
-              <button type="submit" className="w-full mt-4 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3 rounded-full shadow-lg transition">
+              <button
+                type="submit"
+                className="mt-4 w-full rounded-full bg-[#006241] py-3 font-semibold text-white shadow-lg transition hover:bg-[#004d33]"
+              >
                 Crear cuenta
               </button>
             </form>

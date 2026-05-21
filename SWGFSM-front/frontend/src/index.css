@@ -4,5 +4,5 @@
 
 /* Opcional: estilo global del body */
 body {
-  @apply bg-lime-100 font-sans;
+  @apply bg-[#f6f4ef] font-sans text-[#1e3932];
 }

@@ -1,10 +1,12 @@
 // src/components/ClientProfilePage.js - VERSIÓN CON CONEXIÓN A MONGODB
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import PasswordInput from "./PasswordInput";
+import { nombreLineaVenta, mergeTipoLineaDesdeCatalogo } from "../utils/tiendaProducto";
 
 const API_URL_VENTAS = "http://localhost:5000/api/ventas";
 const API_URL_CLIENTES = "http://localhost:5000/api/clientes";
+const API_URL_PRODUCTOS = "http://localhost:5000/api/producto";
 
 const mapServerCliente = (doc) => {
   if (!doc) return null;
@@ -73,10 +75,25 @@ const ClientProfilePage = () => {
   const [passwordData, setPasswordData] = useState({ current: "", new: "", confirm: "" });
   const [loading, setLoading] = useState(true);
   const [detailOrder, setDetailOrder] = useState(null);
+  const [catalogoProductos, setCatalogoProductos] = useState([]);
 
-  useEffect(() => {
-    loadClientAndOrders();
-  }, []);
+  const productoPorId = useMemo(() => {
+    const m = new Map();
+    catalogoProductos.forEach((p) => {
+      if (p?._id != null) m.set(String(p._id), p);
+    });
+    return m;
+  }, [catalogoProductos]);
+
+  const etiquetaLineaPedido = (item) => {
+    const line = {
+      nombre: item.nombre || item.name,
+      tipo: item.tipo,
+      madurez: item.madurez,
+      productoId: item.productoId,
+    };
+    return nombreLineaVenta(mergeTipoLineaDesdeCatalogo(line, productoPorId));
+  };
 
   useEffect(() => {
     if (!detailOrder) return;
@@ -119,17 +136,48 @@ const ClientProfilePage = () => {
     }
   };
 
+  const camposEntrega = (o) => ({
+    tipoEntrega: o?.tipoEntrega,
+    estacionMetropolitanoId: o?.estacionMetropolitanoId,
+    estacionMetropolitanoNombre: o?.estacionMetropolitanoNombre,
+    estacionMetropolitanoLinea: o?.estacionMetropolitanoLinea,
+    estacionReferencia: o?.estacionReferencia,
+    tiendaDireccion: o?.tiendaDireccion,
+  });
+
+  const fusionarEntregaDesdeLocal = (apiOrders, email) => {
+    try {
+      const raw = localStorage.getItem("cliente_pedidos");
+      if (!raw || !email) return apiOrders;
+      const localList = JSON.parse(raw)[email];
+      if (!Array.isArray(localList) || !localList.length) return apiOrders;
+      return apiOrders.map((v) => {
+        if (v?.tipoEntrega) return v;
+        const local = localList.find(
+          (l) =>
+            (l.numeroVenta && l.numeroVenta === v.numeroVenta) ||
+            (l.id && String(l.id) === String(v._id))
+        );
+        if (!local?.tipoEntrega) return v;
+        return { ...v, ...camposEntrega(local) };
+      });
+    } catch {
+      return apiOrders;
+    }
+  };
+
   const fetchClientOrders = async (email) => {
     try {
       // Obtener todas las ventas del cliente por email
       const response = await fetch(`${API_URL_VENTAS}?clienteEmail=${email}`);
       if (response.ok) {
         const data = await response.json();
-        console.log("Pedidos del cliente desde MongoDB:", data);
-        setOrders(data);
-        
+        const merged = fusionarEntregaDesdeLocal(data, email);
+        console.log("Pedidos del cliente desde MongoDB:", merged);
+        setOrders(merged);
+
         // También guardar en localStorage como respaldo
-        const byClient = { [email]: data };
+        const byClient = { [email]: merged };
         localStorage.setItem("cliente_pedidos", JSON.stringify(byClient));
       } else {
         // Fallback a localStorage si hay error
@@ -149,6 +197,25 @@ const ClientProfilePage = () => {
       }
     }
   };
+
+  useEffect(() => {
+    loadClientAndOrders();
+  }, []);
+
+  useEffect(() => {
+    let cancel = false;
+    fetch(API_URL_PRODUCTOS)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data) => {
+        if (!cancel) setCatalogoProductos(Array.isArray(data) ? data : []);
+      })
+      .catch(() => {
+        if (!cancel) setCatalogoProductos([]);
+      });
+    return () => {
+      cancel = true;
+    };
+  }, []);
 
   const confirmLogout = () => {
     localStorage.removeItem("cliente_logueado");
@@ -278,6 +345,26 @@ const ClientProfilePage = () => {
     return map[String(m || "").toLowerCase()] || m || "—";
   };
 
+  const textoEntregaPedido = (order) => {
+    if (order?.tipoEntrega === "METROPOLITANO") {
+      const nom = order.estacionMetropolitanoNombre || "estación Metropolitano";
+      const lin = order.estacionMetropolitanoLinea ? ` (${order.estacionMetropolitanoLinea})` : "";
+      return {
+        titulo: "Entrega en estación Metropolitano",
+        detalle: `${nom}${lin}`,
+        referencia: order.estacionReferencia || null,
+      };
+    }
+    if (order?.tipoEntrega === "TIENDA") {
+      return {
+        titulo: "Recojo en tienda",
+        detalle: order.tiendaDireccion || "Av. Mercado Caqueta N° 800, RIMAC",
+        referencia: null,
+      };
+    }
+    return null;
+  };
+
   const lineaSubtotal = (item) => {
     if (item.subtotal != null && Number.isFinite(Number(item.subtotal))) return Number(item.subtotal);
     const pu = Number(item.precioUnitario ?? item.price ?? 0);
@@ -372,7 +459,9 @@ const ClientProfilePage = () => {
         <h2 className="text-2xl font-bold text-emerald-900 mb-1">Mis pedidos</h2>
         <p className="text-sm text-gray-400 mb-5">{orders.length} pedido(s) realizados.</p>
         <div className="space-y-4">
-          {[...orders].reverse().map((order, index) => (
+          {[...orders].reverse().map((order, index) => {
+            const entrega = textoEntregaPedido(order);
+            return (
             <button
               key={order._id || index}
               type="button"
@@ -385,7 +474,7 @@ const ClientProfilePage = () => {
                     Pedido #{order.numeroVenta || orders.length - index}
                   </p>
                   <p className="text-xs text-gray-400 mt-0.5">{formatDate(order.fecha || order.date)}</p>
-                  <p className="text-xs mt-1">
+                  <p className="text-xs mt-1 flex flex-wrap gap-1.5">
                     <span
                       className={`font-semibold px-2 py-0.5 rounded-full ${
                         order.origen === "CAJA"
@@ -397,7 +486,22 @@ const ClientProfilePage = () => {
                     >
                       {etiquetaOrigenPedido(order)}
                     </span>
+                    {entrega?.titulo === "Entrega en estación Metropolitano" && (
+                      <span className="font-semibold px-2 py-0.5 rounded-full bg-[#006241]/10 text-[#006241]">
+                        Metropolitano
+                      </span>
+                    )}
+                    {entrega?.titulo === "Recojo en tienda" && (
+                      <span className="font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">
+                        Recojo tienda
+                      </span>
+                    )}
                   </p>
+                  {entrega && (
+                    <p className="text-xs text-[#006241] font-medium mt-1">
+                      {entrega.detalle}
+                    </p>
+                  )}
                 </div>
                 <div className="text-right">
                   <span className={`text-xs font-semibold px-3 py-1 rounded-full ${getEstadoColor(order.estado || "Pendiente")}`}>
@@ -410,7 +514,7 @@ const ClientProfilePage = () => {
                 {(order.productos || order.items || []).map((item, idx) => (
                   <div key={idx} className="flex justify-between text-xs text-gray-600">
                     <span>
-                      {item.nombre || item.name} ({item.medida || item.measure}) x{item.cantidad || item.quantity}
+                      {etiquetaLineaPedido(item)} ({item.medida || item.measure}) x{item.cantidad || item.quantity}
                     </span>
                     <span className="font-semibold">S/ {lineaSubtotal(item).toFixed(2)}</span>
                   </div>
@@ -418,7 +522,8 @@ const ClientProfilePage = () => {
               </div>
               <p className="text-xs text-emerald-600 font-semibold mt-3">Toca para ver el detalle completo →</p>
             </button>
-          ))}
+            );
+          })}
         </div>
       </div>
     );
@@ -590,6 +695,40 @@ const ClientProfilePage = () => {
                 </span>
               </div>
 
+              {(() => {
+                const entregaDet = textoEntregaPedido(detailOrder);
+                if (!entregaDet) {
+                  return detailOrder.origen === "ONLINE" ? (
+                    <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                      No consta el modo de entrega en este pedido (registro anterior). Los pedidos nuevos
+                      muestran tienda o estación Metropolitano.
+                    </div>
+                  ) : null;
+                }
+                return (
+                <div className="rounded-2xl border-2 border-[#006241]/25 bg-[#eef7f3] p-4">
+                  <p className="text-xs font-bold uppercase tracking-wide text-[#006241]">
+                    {entregaDet.titulo}
+                  </p>
+                  <p className="mt-2 text-base font-bold text-gray-900">
+                    {entregaDet.detalle}
+                  </p>
+                  {entregaDet.referencia && (
+                    <p className="mt-2 text-sm text-gray-700">
+                      <span className="font-semibold text-[#006241]">Punto de encuentro:</span>{" "}
+                      {entregaDet.referencia}
+                    </p>
+                  )}
+                  {detailOrder.tipoEntrega === "METROPOLITANO" && (
+                    <p className="mt-3 text-xs text-gray-600">
+                      Te entregaremos tu pedido en la estación indicada. Recibirás el pedido en el punto de
+                      encuentro acordado.
+                    </p>
+                  )}
+                </div>
+                );
+              })()}
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
                 <div className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2">
                   <p className="text-xs text-gray-500">Cliente</p>
@@ -629,7 +768,7 @@ const ClientProfilePage = () => {
                     <tbody>
                       {(detailOrder.productos || detailOrder.items || []).map((item, idx) => (
                         <tr key={idx} className="border-t border-gray-100">
-                          <td className="px-3 py-2 text-gray-800">{item.nombre || item.name}</td>
+                          <td className="px-3 py-2 text-gray-800">{etiquetaLineaPedido(item)}</td>
                           <td className="px-3 py-2 text-gray-600">{item.medida || item.measure || "1kg"}</td>
                           <td className="px-3 py-2 text-right tabular-nums">{item.cantidad ?? item.quantity}</td>
                           <td className="px-3 py-2 text-right tabular-nums">
