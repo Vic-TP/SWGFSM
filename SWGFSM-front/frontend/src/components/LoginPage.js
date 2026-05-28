@@ -131,7 +131,7 @@ const LoginPage = () => {
       localStorage.setItem("cliente_actual", JSON.stringify(clienteFront));
       localStorage.setItem("cliente_logueado", "true");
       alert(`Bienvenido/a ${clienteFront.nombre}`);
-      window.location.href = "/cliente/perfil";
+      window.location.href = "/";
     } catch (err) {
       console.error(err);
       alert("No se pudo conectar con el servidor. ¿Está el backend en marcha?");

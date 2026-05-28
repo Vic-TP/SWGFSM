@@ -21,12 +21,16 @@ import paltaHassMadura from "../assets/palta-hass-madura.png";
 import paltaHassCarousel from "../assets/palta-hass.png";
 import paltaFuerte from "../assets/palta-fuerte.png";
 import paltaFuerteMostrador from "../assets/palta-fuerte-mostrador.png";
+import packPaltaFuerte from "../assets/pack-palta-fuerte.png";
+import packPaltaHass from "../assets/pack-palta-hass.png";
 import paltaNaval from "../assets/palta-naval.png";
 import paltaSelva from "../assets/palta-selva.png";
 import paltasVariadas from "../assets/paltas.png";
 import logoPaltas from "../assets/logopaltasinterior.png";
 import paltaHall from "../assets/palta-hall.png";
 import infoNutri from "../assets/info_nutri.png";
+import infoNutri2 from "../assets/info_nutri2.png";
+import infoNutri3 from "../assets/info_nutri3.png";
 import procesoChacra from "../assets/proceso/chacra.png";
 import procesoCosecha from "../assets/proceso/cosecha.png";
 import procesoTraslado from "../assets/proceso/traslado.png";
@@ -249,6 +253,20 @@ const HomePage = () => {
   const [productosActivos, setProductosActivos] = useState([]);
   const [loadingProductos, setLoadingProductos] = useState(true);
   const [heroSlide, setHeroSlide] = useState(0);
+  const [nutriLightbox, setNutriLightbox] = useState(null);
+
+  useEffect(() => {
+    if (!nutriLightbox) return;
+    const onKey = (e) => {
+      if (e.key === "Escape") setNutriLightbox(null);
+    };
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = "";
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [nutriLightbox]);
 
   useEffect(() => {
     try {
@@ -604,6 +622,7 @@ const HomePage = () => {
       {
         slot: 0,
         img: paltaFuerte,
+        imagenPromo: packPaltaFuerte,
         etiqueta: "PALTA FUERTE",
         precioFijo: 9,
         product: pickFuerte,
@@ -611,6 +630,7 @@ const HomePage = () => {
       {
         slot: 1,
         img: paltaHassVerde,
+        imagenPromo: packPaltaHass,
         etiqueta: "PALTA HASS",
         precioFijo: null,
         product: pickHass,
@@ -627,6 +647,31 @@ const HomePage = () => {
 
   return (
     <div className="min-h-screen bg-white">
+      {nutriLightbox && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/75 p-4 sm:p-8"
+          role="dialog"
+          aria-modal="true"
+          aria-label={nutriLightbox.alt}
+          onClick={() => setNutriLightbox(null)}
+        >
+          <button
+            type="button"
+            className="absolute right-4 top-4 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-white/95 text-xl font-bold text-[#1e3932] shadow-lg hover:bg-white"
+            aria-label="Cerrar"
+            onClick={() => setNutriLightbox(null)}
+          >
+            ×
+          </button>
+          <img
+            src={nutriLightbox.src}
+            alt={nutriLightbox.alt}
+            className="max-h-[90vh] max-w-[min(96vw,920px)] w-auto rounded-2xl border-4 border-white bg-white shadow-2xl object-contain"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
+
       <Header
         onCartClick={() => setIsCartOpen(true)}
         cartCount={cartCount}
@@ -778,18 +823,18 @@ const HomePage = () => {
 
       <section className="border-t border-[#d4e9e2]/80 bg-gradient-to-b from-white via-[#eef7f3]/95 to-white py-18 lg:py-24">
         <div className="mx-auto max-w-7xl px-6">
-          <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-12 items-center">
-            <div className="text-center lg:text-left">
+          <div className="flex flex-col gap-10">
+            <div className="text-left">
               <span className="inline-flex items-center gap-2 rounded-full border border-[#006241]/25 bg-[#006241]/10 px-7 py-3 shadow-sm">
                 <span className="text-lg font-bold text-[#006241]">Modo saludable</span>
               </span>
-              <h2 className="mt-5 text-4xl lg:text-5xl font-extrabold text-[#1e3932]">
-                Beneficios de la palta
+              <h2 className="mt-5 text-4xl font-extrabold text-[#1e3932] lg:text-5xl">
+                Beneficios de la palta y recetarios
               </h2>
-              <p className="mt-4 text-lg text-slate-600 max-w-2xl mx-auto lg:mx-0">
-                Información rápida para que incluyas la palta en tus comidas diarias.
+              <p className="mt-4 max-w-2xl text-lg text-slate-600">
+                Información rápida para que incluyas la palta en tus comidas diarias y recetarios.
               </p>
-              <div className="mt-7 flex justify-center lg:justify-start">
+              <div className="mt-7">
                 <button
                   type="button"
                   onClick={() => (window.location.href = "/recetas-palta")}
@@ -801,13 +846,73 @@ const HomePage = () => {
               </div>
             </div>
 
-            <div className="flex justify-center lg:justify-end">
-              <img
-                src={infoNutri}
-                alt="Beneficios de la palta"
-                className="w-full max-w-lg rounded-3xl border border-[#d4e9e2]/90 bg-white shadow-xl"
-                loading="lazy"
-              />
+            <div className="flex flex-col items-start gap-4">
+              <p className="text-sm text-slate-500">Haz clic en cada infografía para verla en tamaño completo.</p>
+              <div className="grid w-full grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setNutriLightbox({
+                      src: infoNutri,
+                      alt: "Beneficios de la palta para la salud",
+                    })
+                  }
+                  className="group relative w-full cursor-zoom-in rounded-3xl border border-[#d4e9e2]/90 bg-white p-1 shadow-xl transition hover:border-[#006241]/40 hover:shadow-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-[#006241]"
+                  aria-label="Ampliar infografía de beneficios de la palta"
+                >
+                  <img
+                    src={infoNutri}
+                    alt=""
+                    className="w-full rounded-[1.35rem] object-contain"
+                    loading="lazy"
+                  />
+                  <span className="pointer-events-none absolute inset-x-0 bottom-0 rounded-b-[1.35rem] bg-[#1e3932]/75 py-2 text-center text-xs font-semibold text-white opacity-0 transition group-hover:opacity-100 group-focus-visible:opacity-100">
+                    Ver más grande
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setNutriLightbox({
+                      src: infoNutri2,
+                      alt: "Top nutrientes en medio aguacate Hass",
+                    })
+                  }
+                  className="group relative w-full cursor-zoom-in rounded-3xl border border-[#d4e9e2]/90 bg-white p-1 shadow-xl transition hover:border-[#006241]/40 hover:shadow-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-[#006241]"
+                  aria-label="Ampliar infografía de nutrientes del aguacate Hass"
+                >
+                  <img
+                    src={infoNutri2}
+                    alt=""
+                    className="w-full rounded-[1.35rem] object-contain"
+                    loading="lazy"
+                  />
+                  <span className="pointer-events-none absolute inset-x-0 bottom-0 rounded-b-[1.35rem] bg-[#1e3932]/75 py-2 text-center text-xs font-semibold text-white opacity-0 transition group-hover:opacity-100 group-focus-visible:opacity-100">
+                    Ver más grande
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setNutriLightbox({
+                      src: infoNutri3,
+                      alt: "Comparación nutricional de la palta con otros alimentos",
+                    })
+                  }
+                  className="group relative w-full cursor-zoom-in rounded-3xl border border-[#d4e9e2]/90 bg-white p-1 shadow-xl transition hover:border-[#006241]/40 hover:shadow-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-[#006241] sm:col-span-2 sm:max-w-md sm:justify-self-center lg:col-span-1 lg:max-w-none"
+                  aria-label="Ampliar infografía comparativa de la palta"
+                >
+                  <img
+                    src={infoNutri3}
+                    alt=""
+                    className="w-full rounded-[1.35rem] object-contain"
+                    loading="lazy"
+                  />
+                  <span className="pointer-events-none absolute inset-x-0 bottom-0 rounded-b-[1.35rem] bg-[#1e3932]/75 py-2 text-center text-xs font-semibold text-white opacity-0 transition group-hover:opacity-100 group-focus-visible:opacity-100">
+                    Ver más grande
+                  </span>
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -838,17 +943,12 @@ const HomePage = () => {
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-5 lg:grid-cols-3 xl:grid-cols-4">
-              {productosTemporada.map((product, idx) => (
+              {productosTemporada.map((product) => (
                 <article
                   key={idProducto(product._id)}
                   className="group flex flex-col overflow-hidden rounded-2xl border border-[#d4e9e2] bg-white shadow-md transition-all duration-300 hover:-translate-y-0.5 hover:border-[#006241]/35 hover:shadow-xl"
                 >
                   <div className="relative aspect-[4/3] bg-gradient-to-b from-white to-[#eef7f3]/80">
-                    {idx === 0 && (
-                      <span className="absolute left-3 top-3 z-10 rounded-full bg-[#006241] px-3 py-1 text-[10px] font-bold uppercase tracking-wide text-white shadow-md">
-                        Destacado
-                      </span>
-                    )}
                     <img
                       src={product.imagen}
                       alt={tituloConTipo(product)}
@@ -911,7 +1011,7 @@ const HomePage = () => {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8 pt-2 md:pt-6">
-            {promoCards.map(({ slot, img, etiqueta, precioFijo, product }) => {
+            {promoCards.map(({ slot, img, imagenPromo, etiqueta, precioFijo, product }) => {
               const precioPack =
                 precioFijo != null
                   ? precioFijo
@@ -925,19 +1025,29 @@ const HomePage = () => {
                   className="transform bg-white rounded-2xl p-6 text-center shadow-xl transition-all duration-300 hover:scale-105"
                 >
                   <div
-                    className="mx-auto mb-4 flex h-28 w-28 items-center justify-center rounded-2xl bg-gradient-to-b from-amber-100 to-amber-200/90 p-2 shadow-inner ring-2 ring-amber-800/20"
+                    className={`mx-auto mb-4 flex items-center justify-center rounded-2xl bg-gradient-to-b from-amber-100 to-amber-200/90 p-2 shadow-inner ring-2 ring-amber-800/20 ${
+                      imagenPromo ? "h-36 w-full max-w-[220px]" : "h-28 w-28"
+                    }`}
                     aria-hidden
                   >
-                    <div className="grid grid-cols-2 gap-1 rounded-md bg-amber-50/80 p-1.5 shadow-sm">
-                      {[0, 1, 2, 3].map((i) => (
-                        <img
-                          key={i}
-                          src={img}
-                          alt=""
-                          className="h-10 w-10 object-contain drop-shadow-sm"
-                        />
-                      ))}
-                    </div>
+                    {imagenPromo ? (
+                      <img
+                        src={imagenPromo}
+                        alt={etiqueta}
+                        className="h-full w-full object-contain drop-shadow-md"
+                      />
+                    ) : (
+                      <div className="grid grid-cols-2 gap-1 rounded-md bg-amber-50/80 p-1.5 shadow-sm">
+                        {[0, 1, 2, 3].map((i) => (
+                          <img
+                            key={i}
+                            src={img}
+                            alt=""
+                            className="h-10 w-10 object-contain drop-shadow-sm"
+                          />
+                        ))}
+                      </div>
+                    )}
                   </div>
                   <h3 className="text-xl font-bold tracking-tight text-gray-900">PACK FAMILIAR</h3>
                   <p className="mt-1 text-lg font-bold uppercase tracking-tight text-gray-800">

@@ -7,6 +7,7 @@ import GestionTareas from "./GestionTareas";
 import TareasAsignadas from "./TareasAsignadas";
 import CajaRegistradora from "./CajaRegistradora";
 import Prediccion from "../predict/Prediccion";
+import PrediccionChartsPanel, { normalizeInventarioML } from "../predict/PrediccionCharts";
 import PasswordInput from "./PasswordInput";
 import { nombreLineaVenta } from "../utils/tiendaProducto";
 
@@ -259,6 +260,7 @@ const AdminDashboard = () => {
     porOrigenSin: 0,
     ultimasVentas: [],
     ventasLista: [],
+    mlPredictions: [],
   });
   const emptyEmpleadoForm = () => ({
     nombres: "",
@@ -333,11 +335,12 @@ const AdminDashboard = () => {
     hace30.setDate(hace30.getDate() - 30);
 
     try {
-      const [rv, rp, rc, rpred] = await Promise.all([
+      const [rv, rp, rc, rpred, rinv] = await Promise.all([
         fetch(API_URL_VENTAS),
         fetch(API_URL_PRODUCTOS),
         fetch(API_URL_CLIENTES),
         fetch(`${API_URL_PREDICCION}/resumen`),
+        fetch(`${API_URL_PREDICCION}/inventario`),
       ]);
 
       if (!rv.ok) throw new Error(`Ventas HTTP ${rv.status}`);
@@ -360,6 +363,14 @@ const AdminDashboard = () => {
       if (rpred.ok) {
         const pr = await rpred.json();
         predData = pr?.data || null;
+      }
+
+      let mlPredictions = [];
+      if (rinv.ok) {
+        const inv = await rinv.json();
+        if (inv?.ok && Array.isArray(inv.data)) {
+          mlPredictions = normalizeInventarioML(inv.data);
+        }
       }
 
       const ventasHoyList = ventasArr.filter((v) => sameLocalDay(fechaVenta(v), hoy));
@@ -418,6 +429,7 @@ const AdminDashboard = () => {
         porOrigenSin: porOrigen.sin,
         ultimasVentas,
         ventasLista: ventasArr,
+        mlPredictions,
       });
 
       setProductos(productosArr);
@@ -1008,7 +1020,9 @@ const AdminDashboard = () => {
             <div className="rounded-3xl border border-lime-200 bg-white p-6 shadow-sm">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div>
-                  <h2 className="text-lg font-bold text-emerald-900">Palta madura (predicción ML)</h2>
+                  <h2 className="text-lg font-bold uppercase tracking-wide text-emerald-900">
+                    PREDICCION DE PALTAS
+                  </h2>
                   <p className="mt-1 text-sm text-gray-600">
                     Kilos estimados por estado de madurez según el modelo de machine learning aplicado a los lotes de
                     inventario registrados.
@@ -1019,7 +1033,7 @@ const AdminDashboard = () => {
                   onClick={() => setSelectedSection("prediction")}
                   className="shrink-0 rounded-full bg-emerald-700 px-4 py-2 text-xs font-semibold text-lime-50 hover:bg-emerald-600"
                 >
-                  Ver predicción
+                  Ver módulo completo
                 </button>
               </div>
               <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -1049,10 +1063,16 @@ const AdminDashboard = () => {
                 </div>
               </div>
               <p className="mt-4 text-xs text-gray-500">
-                Lotes de inventario considerados:{" "}
-                <strong>{dash.loading ? "…" : dash.lotesInventarioML}</strong>. La palta clasificada como{" "}
-                <strong>madura</strong> es la que el sistema anticipa lista o casi lista para venta inmediata.
+                Sub-lotes analizados por el modelo:{" "}
+                <strong>{dash.loading ? "…" : dash.mlPredictions.length}</strong>. La palta en estado{" "}
+                <strong>maduro</strong> es la que el sistema anticipa lista o casi lista para venta inmediata.
               </p>
+
+              <PrediccionChartsPanel
+                predictions={dash.mlPredictions}
+                loading={dash.loading}
+                showExplanations
+              />
             </div>
           </div>
         </section>
