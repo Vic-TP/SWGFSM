@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
+import PrediccionChartsPanel from "./PrediccionCharts";
 
 // ═══════════════════════════════════════════════════════════════════════════════
 //  UMBRALES — espejo exacto del trainer.js
@@ -181,18 +182,6 @@ const AlertModal = ({ predictions, onDismiss }) => {
 // ═══════════════════════════════════════════════════════════════════════════════
 //  UI ATOMS
 // ═══════════════════════════════════════════════════════════════════════════════
-const useChartJs = () => {
-  const [ready, setReady] = useState(!!window.Chart);
-  useEffect(() => {
-    if (window.Chart) { setReady(true); return; }
-    const s = document.createElement("script");
-    s.src = "https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js";
-    s.onload = () => setReady(true);
-    document.head.appendChild(s);
-  }, []);
-  return ready;
-};
-
 const Badge = ({ estado }) => {
   const c = ESTADO_CONFIG[estado] ?? { label: estado, bg:"bg-gray-100", text:"text-gray-700" };
   return <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold ${c.bg} ${c.text}`}>{c.label}</span>;
@@ -231,52 +220,6 @@ const accionColor  = e => (e==="punto_negro"||e==="maduro") ? "text-red-600" : "
 const accionPrefix = e => (e==="punto_negro"||e==="maduro") ? "⚠ " : "✓ ";
 
 // ═══════════════════════════════════════════════════════════════════════════════
-//  CHART CANVASES
-// ═══════════════════════════════════════════════════════════════════════════════
-const useChart = (ref, config) => {
-  useEffect(() => {
-    if (!ref.current || !window.Chart) return;
-    const c = new window.Chart(ref.current, config);
-    return () => c.destroy();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-};
-const LineChartCanvas = ({ enRiesgo, enSazon }) => {
-  const ref = useRef(null);
-  const gen = (end, f) => Array.from({length:7},(_,i) => Math.max(0,Math.round(end*(0.4+(i/6)*0.6*f))));
-  useChart(ref, {
-    type:"line",
-    data:{
-      labels:["-6d","-5d","-4d","-3d","-2d","Ayer","Hoy"],
-      datasets:[
-        {label:"En riesgo",data:gen(enRiesgo,1),  borderColor:"#dc2626",backgroundColor:"rgba(220,38,38,.1)", tension:.4,fill:true,pointRadius:3},
-        {label:"En sazón", data:gen(enSazon,1.5), borderColor:"#15803d",backgroundColor:"rgba(21,128,61,.1)", tension:.4,fill:true,pointRadius:3},
-      ],
-    },
-    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:"top",labels:{font:{size:11},boxWidth:10,padding:8}}},scales:{y:{beginAtZero:true,ticks:{font:{size:10}}},x:{ticks:{font:{size:10}}}}},
-  });
-  return <canvas ref={ref}/>;
-};
-const DoughnutChartCanvas = ({ data }) => {
-  const ref = useRef(null);
-  useChart(ref,{
-    type:"doughnut",
-    data:{labels:["Punto negro","Maduro","Sazón","Verde"],datasets:[{data,backgroundColor:["#dc2626","#d97706","#15803d","#0284c7"],borderWidth:0}]},
-    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:"right",labels:{font:{size:11},boxWidth:10,padding:8}}}},
-  });
-  return <canvas ref={ref}/>;
-};
-const BarChartCanvas = ({ labels, values }) => {
-  const ref = useRef(null);
-  useChart(ref,{
-    type:"bar",
-    data:{labels,datasets:[{label:"Kg en riesgo",data:values,backgroundColor:values.map(v=>v>0?"#dc2626":"#15803d"),borderRadius:4}]},
-    options:{responsive:true,maintainAspectRatio:false,indexAxis:"y",plugins:{legend:{display:false}},scales:{x:{beginAtZero:true,ticks:{font:{size:10}}},y:{ticks:{font:{size:11}}}}},
-  });
-  return <canvas ref={ref}/>;
-};
-
-// ═══════════════════════════════════════════════════════════════════════════════
 //  TABS
 // ═══════════════════════════════════════════════════════════════════════════════
 const TABS = [
@@ -295,7 +238,6 @@ const Prediccion = () => {
   const [filtro,         setFiltro]         = useState("todos");
   const [showAlert,      setShowAlert]      = useState(false);
   const [alertDismissed, setAlertDismissed] = useState(false);
-  const chartReady = useChartJs();
 
   const { data:inventarioDB, resumen, historialDB, loading:dbLoading, error:dbError, recargar } = useInventarioML();
   
@@ -331,7 +273,6 @@ const Prediccion = () => {
   const accuracy    = typeof _accRaw === "number" ? _accRaw : null;
 
   const countByEstado = est => predictions.filter(p=>p.estadoML===est).reduce((s,p)=>s+(p.cant??0),0);
-  const doughnutData  = ["punto_negro","maduro","sazon","verde"].map(countByEstado);
 
   const productosAgrupados = Object.values(
     predictions.reduce((acc,p)=>{
@@ -362,8 +303,6 @@ const Prediccion = () => {
     const cal    = mlStatus!=="ready" ? null : riesgo===0 ? "Excelente" : riesgo<total*0.3 ? "Bueno" : "Regular";
     return {nombre:prod,unidades:total,riesgo,cal};
   });
-  const barLabels = CALIFICACIONES.map(p=>p.nombre);
-  const barValues = CALIFICACIONES.map(p=>mlStatus==="ready"?p.riesgo:0);
 
   useEffect(()=>{
     if(mlStatus!=="ready"||alertDismissed) return;
@@ -709,31 +648,12 @@ const Prediccion = () => {
                   </div>
                 )}
 
-                {chartReady ? (
-                  <div className="space-y-4">
-                    <div className="grid lg:grid-cols-2 gap-4">
-                      <div className="rounded-xl border border-gray-200 p-4">
-                        <p className="text-xs font-semibold text-gray-700 mb-1">Evolución estimada — 7 días</p>
-                        <p className="text-[10px] text-gray-400 mb-3">Proyección basada en estado ML actual</p>
-                        {mlStatus==="ready"
-                          ?<div className="relative h-44"><LineChartCanvas key={`l-${totalRiesgo}-${totalSazon}`} enRiesgo={predictions.filter(p=>p.estadoML==="punto_negro"||p.estadoML==="maduro").reduce((s,p)=>s+(p.cant??0),0)} enSazon={predictions.filter(p=>p.estadoML==="sazon").reduce((s,p)=>s+(p.cant??0),0)}/></div>
-                          :<ChartSkeleton/>}
-                      </div>
-                      <div className="rounded-xl border border-gray-200 p-4">
-                        <p className="text-xs font-semibold text-gray-700 mb-3">Distribución por estado ML — kg</p>
-                        {mlStatus==="ready"
-                          ?<div className="relative h-44"><DoughnutChartCanvas key={`d-${doughnutData.join("-")}`} data={doughnutData}/></div>
-                          :<ChartSkeleton/>}
-                      </div>
-                    </div>
-                    <div className="rounded-xl border border-gray-200 p-4">
-                      <p className="text-xs font-semibold text-gray-700 mb-3">Kg en riesgo por tipo de palta (ML)</p>
-                      {mlStatus==="ready"
-                        ?<div className="relative h-36"><BarChartCanvas key={`b-${barValues.join("-")}`} labels={barLabels} values={barValues}/></div>
-                        :<ChartSkeleton h="h-36"/>}
-                    </div>
-                  </div>
-                ) : <div className="space-y-4"><ChartSkeleton/><ChartSkeleton h="h-36"/></div>}
+                <PrediccionChartsPanel
+                  predictions={predictions}
+                  loading={mlStatus !== "ready"}
+                  showExplanations={false}
+                  showSectionHeader={false}
+                />
               </div>
             )}
 
