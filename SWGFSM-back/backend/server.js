@@ -52,7 +52,7 @@ const verifyJWT = require("./middleware/verifyJWT"); // Middleware para proteger
 // --- Definición de Endpoints ---
 app.use("/api/clientes", clienteRoutes);
 app.use("/api/empleados", empleadoRoutes);
-app.use("/api/producto", verifyJWT, productoRoutes); // Protegida con JWT
+app.use("/api/producto", productoRoutes); //PARA PODER VER EL PRODUCTO DESDE EL LANDING PAGE
 app.use("/api/inventario", verifyJWT, inventarioRoutes);
 app.use("/api/ventas", verifyJWT, ventasRoutes);
 app.use("/api/proveedores", verifyJWT, proveedorRoutes);

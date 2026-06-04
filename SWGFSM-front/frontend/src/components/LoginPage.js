@@ -96,6 +96,8 @@ const LoginPage = () => {
           sessionStorage.setItem("auth_token", data.token);
         }
         sessionStorage.setItem("user_profile", JSON.stringify(clienteFront));
+        localStorage.setItem("cliente_logueado", "true");
+        localStorage.setItem("cliente_actual", JSON.stringify(clienteFront));
 
         alert(
           `Cuenta creada para ${clienteFront.nombre}. Tus datos quedaron guardados en el servidor.`,
@@ -164,6 +166,8 @@ const LoginPage = () => {
         sessionStorage.setItem("auth_token", data.token);
       }
       sessionStorage.setItem("user_profile", JSON.stringify(clienteFront));
+      localStorage.setItem("cliente_logueado", "true");
+      localStorage.setItem("cliente_actual", JSON.stringify(clienteFront));
 
       alert(`Bienvenido/a ${clienteFront.nombre}`);
       window.location.href = "/";

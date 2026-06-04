@@ -20,6 +20,27 @@ const API_URL_EMPLEADOS = "http://localhost:5000/api/empleados";
 const API_URL_VENTAS = "http://localhost:5000/api/ventas";
 const API_URL_PREDICCION = "http://localhost:5000/api/prediccion";
 
+const getAuthToken = () => {
+  return sessionStorage.getItem("auth_token");
+};
+
+const fetchWithAuth = async (url, options = {}) => {
+  const token = getAuthToken();
+  const headers = {
+    "Content-Type": "application/json",
+    ...options.headers,
+  };
+
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  return fetch(url, {
+    ...options,
+    headers,
+  });
+};
+
 const readTrabajador = () => {
   try {
     const raw = sessionStorage.getItem("user_profile");
@@ -385,11 +406,11 @@ const AdminDashboard = () => {
 
     try {
       const [rv, rp, rc, rpred, rinv] = await Promise.all([
-        fetch(API_URL_VENTAS),
-        fetch(API_URL_PRODUCTOS),
-        fetch(API_URL_CLIENTES),
-        fetch(`${API_URL_PREDICCION}/resumen`),
-        fetch(`${API_URL_PREDICCION}/inventario`),
+        fetchWithAuth(API_URL_VENTAS),
+        fetchWithAuth(API_URL_PRODUCTOS),
+        fetchWithAuth(API_URL_CLIENTES),
+        fetchWithAuth(`${API_URL_PREDICCION}/resumen`),
+        fetchWithAuth(`${API_URL_PREDICCION}/inventario`),
       ]);
 
       if (!rv.ok) throw new Error(`Ventas HTTP ${rv.status}`);
@@ -688,7 +709,7 @@ const AdminDashboard = () => {
       const url = modoEditarProducto
         ? `${API_URL_PRODUCTOS}/${productoActual._id}`
         : API_URL_PRODUCTOS;
-      const res = await fetch(url, {
+      const res = await fetchWithAuth(url, {
         method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -712,7 +733,7 @@ const AdminDashboard = () => {
     )
       return;
     try {
-      const res = await fetch(`${API_URL_PRODUCTOS}/${p._id}`, {
+      const res = await fetchWithAuth(`${API_URL_PRODUCTOS}/${p._id}`, {
         method: "DELETE",
       });
       if (res.ok) {
@@ -767,7 +788,7 @@ const AdminDashboard = () => {
           ? `${API_URL_INVENTARIO}/${inventarioEditId}`
           : API_URL_INVENTARIO;
       const method = modoEditarInventario && inventarioEditId ? "PUT" : "POST";
-      const res = await fetch(url, {
+      const res = await fetchWithAuth(url, {
         method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -834,7 +855,7 @@ const AdminDashboard = () => {
     )
       return;
     try {
-      const res = await fetch(`${API_URL_INVENTARIO}/${inv._id}`, {
+      const res = await fetchWithAuth(`${API_URL_INVENTARIO}/${inv._id}`, {
         method: "DELETE",
       });
       const data = await res.json().catch(() => ({}));

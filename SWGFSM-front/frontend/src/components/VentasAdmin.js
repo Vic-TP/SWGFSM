@@ -115,7 +115,7 @@ const VentasAdmin = () => {
 
   const cambiarOrigen = async (id, nuevoOrigen) => {
     try {
-      const response = await fetch(`${API_URL_VENTAS}/${id}/origen`, {
+      const response = await fetchWithAuth(`${API_URL_VENTAS}/${id}/origen`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ origen: nuevoOrigen }),
@@ -194,7 +194,7 @@ const VentasAdmin = () => {
     if (!window.confirm("¿Eliminar esta venta permanentemente?")) return;
 
     try {
-      const response = await fetch(`${API_URL_VENTAS}/${id}`, {
+      const response = await fetchWithAuth(`${API_URL_VENTAS}/${id}`, {
         method: "DELETE",
       });
 
@@ -435,14 +435,7 @@ const VentasAdmin = () => {
                       {venta.cliente}
                     </td>
                     <td className="px-6 py-3 text-gray-600">
-<<<<<<< HEAD
-                      {venta.productos
-                        ?.slice(0, 2)
-                        .map((p) => `${p.nombre} x${p.cantidad}`)
-                        .join(", ")}
-=======
                       {venta.productos?.slice(0, 2).map((p) => `${etiquetaProductoVenta(p)} x${p.cantidad}`).join(", ")}
->>>>>>> e18060cc50de6555722e6795632c2431463190bd
                       {venta.productos?.length > 2 && " ..."}
                     </td>
                     <td
@@ -657,34 +650,12 @@ const VentasAdmin = () => {
                     </thead>
                     <tbody>
                       {(ventaDetalle.productos || []).map((p, idx) => (
-<<<<<<< HEAD
-                        <tr
-                          key={`${p.nombre}-${idx}`}
-                          className="border-b last:border-0"
-                        >
-                          <td className="px-4 py-3 font-medium text-gray-800">
-                            {p.nombre}
-                          </td>
-                          <td className="px-4 py-3 text-center text-gray-700">
-                            {p.cantidad}
-                          </td>
-                          <td className="px-4 py-3 text-center text-gray-700">
-                            {p.medida || "—"}
-                          </td>
-                          <td className="px-4 py-3 text-right text-gray-700">
-                            S/ {(p.precioUnitario || 0).toFixed(2)}
-                          </td>
-                          <td className="px-4 py-3 text-right font-semibold text-gray-800">
-                            S/ {(p.subtotal || 0).toFixed(2)}
-                          </td>
-=======
                         <tr key={`${String(p.productoId ?? "")}-${idx}`} className="border-b last:border-0">
                           <td className="px-4 py-3 font-medium text-gray-800">{etiquetaProductoVenta(p)}</td>
                           <td className="px-4 py-3 text-center text-gray-700">{p.cantidad}</td>
                           <td className="px-4 py-3 text-center text-gray-700">{p.medida || "—"}</td>
                           <td className="px-4 py-3 text-right text-gray-700">S/ {(p.precioUnitario || 0).toFixed(2)}</td>
                           <td className="px-4 py-3 text-right font-semibold text-gray-800">S/ {(p.subtotal || 0).toFixed(2)}</td>
->>>>>>> e18060cc50de6555722e6795632c2431463190bd
                         </tr>
                       ))}
                       {(ventaDetalle.productos || []).length === 0 && (
