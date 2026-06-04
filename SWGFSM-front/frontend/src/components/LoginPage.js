@@ -220,7 +220,9 @@ const LoginPage = () => {
           {!isRegister && (
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="mb-1 block text-sm font-medium text-[#1e3932]">Correo electrónico</label>
+                <label className="mb-1 block text-sm font-medium text-[#1e3932]">
+                  Correo electrónico
+                </label>
                 <input
                   type="email"
                   className={inputClass}
@@ -235,7 +237,9 @@ const LoginPage = () => {
               </div>
 
               <div>
-                <label className="mb-1 block text-sm font-medium text-[#1e3932]">Contraseña</label>
+                <label className="mb-1 block text-sm font-medium text-[#1e3932]">
+                  Contraseña
+                </label>
                 <PasswordInput
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -256,19 +260,12 @@ const LoginPage = () => {
                 </label>
                 <button
                   type="button"
-<<<<<<< HEAD
-                  className="hover:underline"
+                  className="hover:text-[#006241] hover:underline"
                   onClick={() =>
-                    alert("Contacta con soporte para recuperar tu contrasena")
+                    alert("Contacta con soporte para recuperar tu contraseña")
                   }
                 >
-                  ¿Olvidaste tu contrasena?
-=======
-                  className="hover:text-[#006241] hover:underline"
-                  onClick={() => alert("Contacta con soporte para recuperar tu contraseña")}
-                >
                   ¿Olvidaste tu contraseña?
->>>>>>> e18060cc50de6555722e6795632c2431463190bd
                 </button>
               </div>
 
@@ -286,38 +283,24 @@ const LoginPage = () => {
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                 <div>
-<<<<<<< HEAD
-                  <label className="block text-sm font-medium text-emerald-900 mb-1">
+                  <label className="mb-1 block text-sm font-medium text-[#1e3932]">
                     Nombres
                   </label>
                   <input
                     type="text"
-                    className="w-full rounded-xl border border-emerald-100 px-4 py-2"
-=======
-                  <label className="mb-1 block text-sm font-medium text-[#1e3932]">Nombres</label>
-                  <input
-                    type="text"
                     className={inputClass}
->>>>>>> e18060cc50de6555722e6795632c2431463190bd
                     value={regNombre}
                     onChange={(e) => setRegNombre(e.target.value)}
                     required
                   />
                 </div>
                 <div>
-<<<<<<< HEAD
-                  <label className="block text-sm font-medium text-emerald-900 mb-1">
+                  <label className="mb-1 block text-sm font-medium text-[#1e3932]">
                     Apellidos
                   </label>
                   <input
                     type="text"
-                    className="w-full rounded-xl border border-emerald-100 px-4 py-2"
-=======
-                  <label className="mb-1 block text-sm font-medium text-[#1e3932]">Apellidos</label>
-                  <input
-                    type="text"
                     className={inputClass}
->>>>>>> e18060cc50de6555722e6795632c2431463190bd
                     value={regApellidos}
                     onChange={(e) => setRegApellidos(e.target.value)}
                     required
@@ -326,19 +309,12 @@ const LoginPage = () => {
               </div>
 
               <div>
-<<<<<<< HEAD
-                <label className="block text-sm font-medium text-emerald-900 mb-1">
-                  Correo electronico
+                <label className="mb-1 block text-sm font-medium text-[#1e3932]">
+                  Correo electrónico
                 </label>
                 <input
                   type="email"
-                  className="w-full rounded-xl border border-emerald-100 px-4 py-2"
-=======
-                <label className="mb-1 block text-sm font-medium text-[#1e3932]">Correo electrónico</label>
-                <input
-                  type="email"
                   className={inputClass}
->>>>>>> e18060cc50de6555722e6795632c2431463190bd
                   value={regEmail}
                   onChange={(e) => setRegEmail(e.target.value)}
                   required
@@ -346,19 +322,12 @@ const LoginPage = () => {
               </div>
 
               <div>
-<<<<<<< HEAD
-                <label className="block text-sm font-medium text-emerald-900 mb-1">
-                  Telefono
+                <label className="mb-1 block text-sm font-medium text-[#1e3932]">
+                  Teléfono
                 </label>
                 <input
                   type="tel"
-                  className="w-full rounded-xl border border-emerald-100 px-4 py-2"
-=======
-                <label className="mb-1 block text-sm font-medium text-[#1e3932]">Teléfono</label>
-                <input
-                  type="tel"
                   className={inputClass}
->>>>>>> e18060cc50de6555722e6795632c2431463190bd
                   value={regTelefono}
                   onChange={(e) => setRegTelefono(e.target.value)}
                   required
@@ -366,13 +335,9 @@ const LoginPage = () => {
               </div>
 
               <div>
-<<<<<<< HEAD
-                <label className="block text-sm font-medium text-emerald-900 mb-1">
+                <label className="mb-1 block text-sm font-medium text-[#1e3932]">
                   Contraseña
                 </label>
-=======
-                <label className="mb-1 block text-sm font-medium text-[#1e3932]">Contraseña</label>
->>>>>>> e18060cc50de6555722e6795632c2431463190bd
                 <PasswordInput
                   value={regPassword}
                   onChange={(e) => setRegPassword(e.target.value)}
@@ -383,11 +348,7 @@ const LoginPage = () => {
 
               <button
                 type="submit"
-<<<<<<< HEAD
-                className="w-full mt-4 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3 rounded-full shadow-lg transition"
-=======
                 className="mt-4 w-full rounded-full bg-[#006241] py-3 font-semibold text-white shadow-lg transition hover:bg-[#004d33]"
->>>>>>> e18060cc50de6555722e6795632c2431463190bd
               >
                 Crear cuenta
               </button>

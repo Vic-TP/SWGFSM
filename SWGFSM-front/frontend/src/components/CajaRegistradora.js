@@ -1,6 +1,12 @@
 // src/components/CajaRegistradora.js — Carrito de ventas con validación de stock y totales en tiempo real
 
-import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import React, {
+  useState,
+  useEffect,
+  useMemo,
+  useCallback,
+  useRef,
+} from "react";
 import { tipoProductoLabel } from "../utils/tiendaProducto";
 
 const API_URL_PRODUCTOS = "http://localhost:5000/api/producto";
@@ -81,24 +87,17 @@ const stockKgPorMadurez = (producto, madurez) => {
   const k = String(madurez || "")
     .trim()
     .toLowerCase();
-  if (k === "maduro") return Math.max(0, Math.floor(precioNum(producto.stockPaltaMadura)));
-  if (k === "verde") return Math.max(0, Math.floor(precioNum(producto.stockPaltaVerde)));
-  if (k === "sazon") return Math.max(0, Math.floor(precioNum(producto.stockPaltaSazon)));
+  if (k === "maduro")
+    return Math.max(0, Math.floor(precioNum(producto.stockPaltaMadura)));
+  if (k === "verde")
+    return Math.max(0, Math.floor(precioNum(producto.stockPaltaVerde)));
+  if (k === "sazon")
+    return Math.max(0, Math.floor(precioNum(producto.stockPaltaSazon)));
   return stockDisponible(producto);
 };
 
 const precioVentaDe = (producto) => precioNum(producto?.precioVenta);
 
-<<<<<<< HEAD
-/** subtotal línea = cantidad × precio unitario (siempre en número) */
-const montoLinea = (item) =>
-  precioNum(item.cantidad) * precioNum(item.precioUnitario);
-
-const formatSoles = (n) => precioNum(n).toFixed(2);
-
-const tipoProducto = (p) =>
-  (p?.tipo != null && p.tipo !== "" ? p.tipo : p?.categoriaId) || "—";
-=======
 /** subtotal línea = precio × kg totales (buckets o legado cantidad única) */
 const kgTotalesCarritoItem = (item) => {
   if (item.kgPorMadurez != null && typeof item.kgPorMadurez === "object") {
@@ -111,7 +110,8 @@ const kgTotalesCarritoItem = (item) => {
   return Math.max(0, Math.floor(precioNum(item.cantidad) || 0));
 };
 
-const montoLinea = (item) => precioNum(item.precioUnitario) * kgTotalesCarritoItem(item);
+const montoLinea = (item) =>
+  precioNum(item.precioUnitario) * kgTotalesCarritoItem(item);
 
 const formatoKgPorMadurez = () => ({ verde: 0, sazon: 0, maduro: 0 });
 
@@ -122,9 +122,18 @@ const clampKgPorMadurez = (producto, raw) => {
   mx.sazon = stockKgPorMadurez(producto, "sazon");
   mx.maduro = stockKgPorMadurez(producto, "maduro");
   return {
-    verde: Math.min(Math.max(0, Math.floor(precioNum(raw?.verde) || 0)), mx.verde),
-    sazon: Math.min(Math.max(0, Math.floor(precioNum(raw?.sazon) || 0)), mx.sazon),
-    maduro: Math.min(Math.max(0, Math.floor(precioNum(raw?.maduro) || 0)), mx.maduro),
+    verde: Math.min(
+      Math.max(0, Math.floor(precioNum(raw?.verde) || 0)),
+      mx.verde,
+    ),
+    sazon: Math.min(
+      Math.max(0, Math.floor(precioNum(raw?.sazon) || 0)),
+      mx.sazon,
+    ),
+    maduro: Math.min(
+      Math.max(0, Math.floor(precioNum(raw?.maduro) || 0)),
+      mx.maduro,
+    ),
   };
 };
 
@@ -180,7 +189,9 @@ const BucketKgInput = ({ value, maxKg, label, ariaLabel, onCommit }) => {
           }}
           className="w-16 text-center font-semibold border border-gray-300 rounded-lg py-1 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400/60"
         />
-        <span className="text-[10px] text-amber-800 font-medium whitespace-nowrap">máx. {maxOk}</span>
+        <span className="text-[10px] text-amber-800 font-medium whitespace-nowrap">
+          máx. {maxOk}
+        </span>
       </div>
     </div>
   );
@@ -188,7 +199,9 @@ const BucketKgInput = ({ value, maxKg, label, ariaLabel, onCommit }) => {
 
 /** Cantidad (kg) editable: escribe el valor y confirma con Enter o al salir del campo. */
 const CartQtyField = ({ value, maxPermitido, onCommit }) => {
-  const [draft, setDraft] = useState(String(Math.max(1, Math.floor(precioNum(value) || 1))));
+  const [draft, setDraft] = useState(
+    String(Math.max(1, Math.floor(precioNum(value) || 1))),
+  );
   useEffect(() => {
     setDraft(String(Math.max(1, Math.floor(precioNum(value) || 1))));
   }, [value]);
@@ -222,7 +235,6 @@ const CartQtyField = ({ value, maxPermitido, onCommit }) => {
     />
   );
 };
->>>>>>> e18060cc50de6555722e6795632c2431463190bd
 
 /** onVentaCompletada: opcional; p.ej. refrescar el listado de Productos en el panel admin (solo afecta catálogo Producto, no el módulo Inventario). */
 const CajaRegistradora = ({ onVentaCompletada }) => {
@@ -363,40 +375,27 @@ const CajaRegistradora = ({ onVentaCompletada }) => {
     return m;
   }, [productos]);
 
-<<<<<<< HEAD
-  const stockMaxLinea = useCallback(
-    (productoId) => {
-      const p = productoPorId.get(idProducto(productoId));
-      return p ? stockDisponible(p) : 0;
-    },
-    [productoPorId],
-  );
-=======
->>>>>>> e18060cc50de6555722e6795632c2431463190bd
-
-
   /** Cuando cambia el catálogo (p. ej. venta previa): recalculo precios y límites de kg */
   useEffect(() => {
     if (!productos.length) return;
     setCarrito((prev) => {
       const next = [];
-<<<<<<< HEAD
-      let changed = false;
-      for (const item of prev) {
-        const p = productos.find(
-          (x) => idProducto(x._id) === idProducto(item.productoId),
-        );
-=======
       for (let row of prev) {
-        const p = productos.find((x) => idProducto(x._id) === idProducto(row.productoId));
->>>>>>> e18060cc50de6555722e6795632c2431463190bd
+        const p = productos.find(
+          (x) => idProducto(x._id) === idProducto(row.productoId),
+        );
         if (!p) {
           next.push(row);
           continue;
         }
         row = convertirItemLegadoABuckets({ ...row }, p);
         const unit = precioVentaDe(p);
-        const medida = row.medida != null ? String(row.medida) : (p.unidadMedida ? String(p.unidadMedida) : "—");
+        const medida =
+          row.medida != null
+            ? String(row.medida)
+            : p.unidadMedida
+              ? String(p.unidadMedida)
+              : "—";
         const tipo = tipoProductoLabel(p);
         if (usaBucketsPalta(p)) {
           const totalInv = stockDisponible(p);
@@ -428,26 +427,12 @@ const CajaRegistradora = ({ onVentaCompletada }) => {
             cantidad: cant,
           });
         }
-<<<<<<< HEAD
-        let cant = Math.max(1, Math.floor(precioNum(item.cantidad) || 1));
-        if (cant > max) {
-          cant = max;
-          changed = true;
-        }
-        if (precioNum(item.precioUnitario) !== unit) changed = true;
-        const medida =
-          item.medida != null
-            ? String(item.medida)
-            : p.unidadMedida
-              ? String(p.unidadMedida)
-              : "—";
-        next.push({ ...item, precioUnitario: unit, cantidad: cant, medida });
-=======
->>>>>>> e18060cc50de6555722e6795632c2431463190bd
       }
       const same =
         prev.length === next.length &&
-        prev.every((oldR, idx) => JSON.stringify(oldR) === JSON.stringify(next[idx]));
+        prev.every(
+          (oldR, idx) => JSON.stringify(oldR) === JSON.stringify(next[idx]),
+        );
       return same ? prev : next;
     });
   }, [productos]);
@@ -472,21 +457,9 @@ const CajaRegistradora = ({ onVentaCompletada }) => {
       }
 
       setCarrito((prev) => {
-<<<<<<< HEAD
-        const idx = prev.findIndex((i) => idProducto(i.productoId) === pid);
-        if (idx >= 0) {
-          const actual = prev[idx];
-          const actualCant = Math.max(
-            1,
-            Math.floor(precioNum(actual.cantidad) || 1),
-          );
-          const deseado = actualCant + paso;
-          const final = Math.min(deseado, max);
-          if (deseado > max) {
-            window.alert(
-              `Stock insuficiente para "${producto.nombre}". Máximo permitido: ${max}.`,
-=======
-        const medida = producto.unidadMedida ? String(producto.unidadMedida) : "—";
+        const medida = producto.unidadMedida
+          ? String(producto.unidadMedida)
+          : "—";
         const tipo = tipoProductoLabel(producto);
         const maxTot = stockDisponible(producto);
 
@@ -495,14 +468,13 @@ const CajaRegistradora = ({ onVentaCompletada }) => {
             (i) =>
               idProducto(i.productoId) === pid &&
               i.kgPorMadurez != null &&
-              typeof i.kgPorMadurez === "object"
+              typeof i.kgPorMadurez === "object",
           );
           if (existe) {
             queueMicrotask(() =>
               window.alert(
-                `«${producto.nombre}» ya está en el carrito. Indica kg de Verde, Sazón y Maduro en esa tarjeta.`
-              )
->>>>>>> e18060cc50de6555722e6795632c2431463190bd
+                `«${producto.nombre}» ya está en el carrito. Indica kg de Verde, Sazón y Maduro en esa tarjeta.`,
+              ),
             );
             return prev;
           }
@@ -522,7 +494,7 @@ const CajaRegistradora = ({ onVentaCompletada }) => {
         const idxLeg = prev.findIndex(
           (i) =>
             idProducto(i.productoId) === pid &&
-            !(i.kgPorMadurez != null && typeof i.kgPorMadurez === "object")
+            !(i.kgPorMadurez != null && typeof i.kgPorMadurez === "object"),
         );
         if (idxLeg >= 0) {
           const actual = prev[idxLeg];
@@ -530,27 +502,14 @@ const CajaRegistradora = ({ onVentaCompletada }) => {
           const deseado = cur + 1;
           const fin = Math.min(deseado, maxTot);
           if (deseado > maxTot) {
-            window.alert(`Stock insuficiente para "${producto.nombre}". Máximo: ${maxTot} kg.`);
+            window.alert(
+              `Stock insuficiente para "${producto.nombre}". Máximo: ${maxTot} kg.`,
+            );
           }
           return prev.map((row, i) =>
-<<<<<<< HEAD
-            i === idx
-              ? {
-                  ...row,
-                  precioUnitario: unit,
-                  cantidad: final,
-                  medida: producto.unidadMedida
-                    ? String(producto.unidadMedida)
-                    : row.medida != null
-                      ? String(row.medida)
-                      : "—",
-                }
-              : row,
-=======
             i === idxLeg
               ? { ...row, precioUnitario: unit, tipo, medida, cantidad: fin }
-              : row
->>>>>>> e18060cc50de6555722e6795632c2431463190bd
+              : row,
           );
         }
         return [
@@ -580,10 +539,10 @@ const CajaRegistradora = ({ onVentaCompletada }) => {
           if (!p) return row;
           const kg = { ...row.kgPorMadurez, [campo]: valor };
           return { ...row, kgPorMadurez: clampKgPorMadurez(p, kg) };
-        })
+        }),
       );
     },
-    [productoPorId]
+    [productoPorId],
   );
 
   const actualizarCantidad = useCallback(
@@ -595,7 +554,11 @@ const CajaRegistradora = ({ onVentaCompletada }) => {
       }
       setCarrito((prev) => {
         const item = prev[index];
-        if (!item || (item.kgPorMadurez != null && typeof item.kgPorMadurez === "object")) return prev;
+        if (
+          !item ||
+          (item.kgPorMadurez != null && typeof item.kgPorMadurez === "object")
+        )
+          return prev;
         const p = productoPorId.get(idProducto(item.productoId));
         const max = p ? stockDisponible(p) : 0;
         if (max <= 0) {
@@ -613,11 +576,7 @@ const CajaRegistradora = ({ onVentaCompletada }) => {
         );
       });
     },
-<<<<<<< HEAD
-    [eliminarDelCarrito, stockMaxLinea],
-=======
-    [eliminarDelCarrito, productoPorId]
->>>>>>> e18060cc50de6555722e6795632c2431463190bd
+    [eliminarDelCarrito, productoPorId],
   );
 
   const total = useMemo(
@@ -665,21 +624,31 @@ const CajaRegistradora = ({ onVentaCompletada }) => {
     const lineas = [];
     for (const item of carrito) {
       const tipoStr =
-        item.tipo != null && String(item.tipo).trim() !== "" ? String(item.tipo).trim() : "";
+        item.tipo != null && String(item.tipo).trim() !== ""
+          ? String(item.tipo).trim()
+          : "";
       const p = productoPorId.get(idProducto(item.productoId));
       const pu = precioNum(item.precioUnitario);
       const medida = item.medida || "—";
       const pid = idProducto(item.productoId);
       const nom = item.nombre;
 
-      if (item.kgPorMadurez != null && typeof item.kgPorMadurez === "object" && p && usaBucketsPalta(p)) {
+      if (
+        item.kgPorMadurez != null &&
+        typeof item.kgPorMadurez === "object" &&
+        p &&
+        usaBucketsPalta(p)
+      ) {
         const specs = [
           ["verde", "verde"],
           ["sazon", "sazon"],
           ["maduro", "maduro"],
         ];
         for (const [key, madurezApi] of specs) {
-          const q = Math.max(0, Math.floor(precioNum(item.kgPorMadurez[key]) || 0));
+          const q = Math.max(
+            0,
+            Math.floor(precioNum(item.kgPorMadurez[key]) || 0),
+          );
           if (q < 1) continue;
           lineas.push({
             productoId: pid,
@@ -906,11 +875,16 @@ const CajaRegistradora = ({ onVentaCompletada }) => {
   const anadirMasProductos = useCallback(async () => {
     const lista = await fetchProductos();
     setSearchTerm("");
-    setProductosFiltrados(Array.isArray(lista) && lista.length ? lista : productos);
+    setProductosFiltrados(
+      Array.isArray(lista) && lista.length ? lista : productos,
+    );
     setBuscadorEnfocado(false);
     window.requestAnimationFrame(() => {
       searchInputRef.current?.focus();
-      searchInputRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      searchInputRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
     });
   }, [productos]);
 
@@ -983,17 +957,12 @@ const CajaRegistradora = ({ onVentaCompletada }) => {
                         >
                           <span className="text-gray-400 mt-0.5">🔍</span>
                           <span className="flex-1 min-w-0 grid grid-cols-[1fr_auto] gap-x-3 gap-y-0.5 text-left">
-<<<<<<< HEAD
                             <span className="font-medium text-gray-900 truncate">
                               {producto.nombre}
                             </span>
                             <span className="text-sm text-gray-700 shrink-0">
-                              {tipoProducto(producto)}
+                              {tipoProductoLabel(producto)}
                             </span>
-=======
-                            <span className="font-medium text-gray-900 truncate">{producto.nombre}</span>
-                            <span className="text-sm text-gray-700 shrink-0">{tipoProductoLabel(producto)}</span>
->>>>>>> e18060cc50de6555722e6795632c2431463190bd
                             <span className="text-sm text-emerald-700 col-span-2">
                               P. unit.: S/{" "}
                               {formatSoles(precioVentaDe(producto))}
@@ -1019,11 +988,6 @@ const CajaRegistradora = ({ onVentaCompletada }) => {
           </div>
 
           <div className="bg-white rounded-2xl p-5 shadow-sm">
-<<<<<<< HEAD
-            <h2 className="font-bold text-gray-800 mb-3">
-              Productos disponibles
-            </h2>
-=======
             <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <h2 className="font-bold text-gray-800">Productos disponibles</h2>
               <button
@@ -1034,7 +998,6 @@ const CajaRegistradora = ({ onVentaCompletada }) => {
                 Añadir más productos
               </button>
             </div>
->>>>>>> e18060cc50de6555722e6795632c2431463190bd
             <p className="text-xs text-gray-500 mb-3">
               {searchTerm.trim()
                 ? "Resultados según tu búsqueda (desde el servidor)"
@@ -1046,34 +1009,28 @@ const CajaRegistradora = ({ onVentaCompletada }) => {
                   Buscando…
                 </p>
               )}
-<<<<<<< HEAD
               {!(buscandoSugerencias && searchTerm.trim()) &&
                 productosFiltrados.length > 0 && (
                   <table className="w-full text-sm text-left">
                     <thead className="bg-emerald-900 text-lime-50 sticky top-0 z-10">
                       <tr>
                         <th className="px-4 py-3 font-semibold">Producto</th>
-                        <th className="px-4 py-3 font-semibold w-32">Tipo</th>
+                        <th className="px-4 py-3 font-semibold w-28">Tipo</th>
+                        <th className="px-4 py-3 font-semibold w-28 text-center">
+                          {" "}
+                        </th>
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-100">
                       {productosFiltrados.map((producto) => {
-                        const sinStock = stockDisponible(producto) <= 0;
+                        const sinStockTotal = stockDisponible(producto) <= 0;
                         return (
                           <tr
                             key={producto._id}
-                            onClick={() => {
-                              if (!sinStock) agregarAlCarrito(producto, 1);
-                            }}
                             className={
-                              sinStock
-                                ? "opacity-50 cursor-not-allowed bg-gray-50"
-                                : "hover:bg-emerald-50 cursor-pointer"
-                            }
-                            title={
-                              sinStock
-                                ? "Sin stock"
-                                : "Clic para agregar al carrito"
+                              sinStockTotal
+                                ? "opacity-50 bg-gray-50"
+                                : "hover:bg-emerald-50/60"
                             }
                           >
                             <td className="px-4 py-3 align-top">
@@ -1084,7 +1041,17 @@ const CajaRegistradora = ({ onVentaCompletada }) => {
                                 S/ {formatSoles(precioVentaDe(producto))}
                                 <span className="text-gray-400">
                                   {" "}
-                                  · Stock: {stockDisponible(producto)}
+                                  · Total: {stockDisponible(producto)}
+                                  {usaBucketsPalta(producto) ? (
+                                    <span className="block mt-0.5 text-[11px]">
+                                      Verde{" "}
+                                      {stockKgPorMadurez(producto, "verde")} ·
+                                      Sazón{" "}
+                                      {stockKgPorMadurez(producto, "sazon")} ·
+                                      Maduro{" "}
+                                      {stockKgPorMadurez(producto, "maduro")} kg
+                                    </span>
+                                  ) : null}
                                   {producto.unidadMedida
                                     ? ` · ${producto.unidadMedida}`
                                     : ""}
@@ -1092,7 +1059,22 @@ const CajaRegistradora = ({ onVentaCompletada }) => {
                               </span>
                             </td>
                             <td className="px-4 py-3 align-top text-gray-800 border-l border-gray-100 font-medium">
-                              {tipoProducto(producto)}
+                              {tipoProductoLabel(producto)}
+                            </td>
+                            <td className="px-3 py-3 align-middle text-center border-l border-gray-100">
+                              <button
+                                type="button"
+                                disabled={sinStockTotal}
+                                onClick={() => agregarAlCarrito(producto)}
+                                className="rounded-full bg-emerald-600 text-white text-xs font-semibold px-3 py-2 hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                                title={
+                                  usaBucketsPalta(producto)
+                                    ? "Define kg Verdes / Sazón / Maduro en el carrito"
+                                    : ""
+                                }
+                              >
+                                Agregar
+                              </button>
                             </td>
                           </tr>
                         );
@@ -1100,67 +1082,6 @@ const CajaRegistradora = ({ onVentaCompletada }) => {
                     </tbody>
                   </table>
                 )}
-=======
-              {!(buscandoSugerencias && searchTerm.trim()) && productosFiltrados.length > 0 && (
-                <table className="w-full text-sm text-left">
-                  <thead className="bg-emerald-900 text-lime-50 sticky top-0 z-10">
-                    <tr>
-                      <th className="px-4 py-3 font-semibold">Producto</th>
-                      <th className="px-4 py-3 font-semibold w-28">Tipo</th>
-                      <th className="px-4 py-3 font-semibold w-28 text-center"> </th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-100">
-                    {productosFiltrados.map((producto) => {
-                      const sinStockTotal = stockDisponible(producto) <= 0;
-                      return (
-                        <tr
-                          key={producto._id}
-                          className={sinStockTotal ? "opacity-50 bg-gray-50" : "hover:bg-emerald-50/60"}
-                        >
-                          <td className="px-4 py-3 align-top">
-                            <span className="font-medium text-gray-900 block">{producto.nombre}</span>
-                            <span className="text-xs text-gray-500 mt-0.5 block">
-                              S/ {formatSoles(precioVentaDe(producto))}
-                              <span className="text-gray-400">
-                                {" "}
-                                · Total: {stockDisponible(producto)}
-                                {usaBucketsPalta(producto) ? (
-                                  <span className="block mt-0.5 text-[11px]">
-                                    Verde {stockKgPorMadurez(producto, "verde")} · Sazón{" "}
-                                    {stockKgPorMadurez(producto, "sazon")} · Maduro{" "}
-                                    {stockKgPorMadurez(producto, "maduro")} kg
-                                  </span>
-                                ) : null}
-                                {producto.unidadMedida ? ` · ${producto.unidadMedida}` : ""}
-                              </span>
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 align-top text-gray-800 border-l border-gray-100 font-medium">
-                            {tipoProductoLabel(producto)}
-                          </td>
-                          <td className="px-3 py-3 align-middle text-center border-l border-gray-100">
-                            <button
-                              type="button"
-                              disabled={sinStockTotal}
-                              onClick={() => agregarAlCarrito(producto)}
-                              className="rounded-full bg-emerald-600 text-white text-xs font-semibold px-3 py-2 hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed"
-                              title={
-                                usaBucketsPalta(producto)
-                                  ? "Define kg Verdes / Sazón / Maduro en el carrito"
-                                  : ""
-                              }
-                            >
-                              Agregar
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              )}
->>>>>>> e18060cc50de6555722e6795632c2431463190bd
               {!buscandoSugerencias &&
                 productosFiltrados.length === 0 &&
                 !searchTerm.trim() && (
@@ -1330,13 +1251,12 @@ const CajaRegistradora = ({ onVentaCompletada }) => {
           <div className="bg-white rounded-2xl p-5 shadow-sm">
             <h2 className="font-bold text-gray-800 mb-1">Carrito de venta</h2>
             <p className="text-xs text-gray-500 mb-3">
-<<<<<<< HEAD
-              Precio × cantidad = subtotal. No puedes superar el stock
-              disponible.
-=======
-              Con inventario por madurez indica kg de <strong>Verde</strong>, <strong>Sazón</strong> y <strong>Maduro</strong> — el servidor descuenta cada uno por separado al registrar la venta.{" "}
-              <span className="text-gray-400">Cantidad mayor que el máximo se ajusta sola.</span>
->>>>>>> e18060cc50de6555722e6795632c2431463190bd
+              Con inventario por madurez indica kg de <strong>Verde</strong>,{" "}
+              <strong>Sazón</strong> y <strong>Maduro</strong> — el servidor
+              descuenta cada uno por separado al registrar la venta.{" "}
+              <span className="text-gray-400">
+                Cantidad mayor que el máximo se ajusta sola.
+              </span>
             </p>
             <div className="max-h-96 overflow-y-auto space-y-3">
               {carrito.length === 0 ? (
@@ -1345,18 +1265,12 @@ const CajaRegistradora = ({ onVentaCompletada }) => {
                 </p>
               ) : (
                 carrito.map((item, index) => {
-<<<<<<< HEAD
-                  const maxPermitido = stockMaxLinea(item.productoId);
-                  const cantNum = Math.max(
-                    1,
-                    Math.floor(precioNum(item.cantidad) || 1),
-                  );
-=======
                   const p = productoPorId.get(idProducto(item.productoId));
->>>>>>> e18060cc50de6555722e6795632c2431463190bd
                   const precioU = precioNum(item.precioUnitario);
                   const esBuckets =
-                    item.kgPorMadurez != null && typeof item.kgPorMadurez === "object" && usaBucketsPalta(p || {});
+                    item.kgPorMadurez != null &&
+                    typeof item.kgPorMadurez === "object" &&
+                    usaBucketsPalta(p || {});
 
                   if (esBuckets && p) {
                     const kg = item.kgPorMadurez;
@@ -1372,15 +1286,28 @@ const CajaRegistradora = ({ onVentaCompletada }) => {
                       >
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0 flex-1">
-                            <p className="font-semibold text-sm text-gray-900">{item.nombre}</p>
-                            {item.tipo != null && String(item.tipo).trim() !== "" && String(item.tipo).trim() !== "—" ? (
+                            <p className="font-semibold text-sm text-gray-900">
+                              {item.nombre}
+                            </p>
+                            {item.tipo != null &&
+                            String(item.tipo).trim() !== "" &&
+                            String(item.tipo).trim() !== "—" ? (
                               <p className="text-[11px] text-amber-900/90 font-medium mt-0.5">
-                                Tipo: <span className="text-gray-800">{String(item.tipo).trim()}</span>
+                                Tipo:{" "}
+                                <span className="text-gray-800">
+                                  {String(item.tipo).trim()}
+                                </span>
                               </p>
                             ) : null}
                             <p className="text-[11px] text-gray-500 mt-0.5">
-                              Unidad: <span className="text-gray-700">{item.medida || "—"}</span> · Total kg:{" "}
-                              <span className="font-semibold text-gray-800">{kgTot}</span>
+                              Unidad:{" "}
+                              <span className="text-gray-700">
+                                {item.medida || "—"}
+                              </span>{" "}
+                              · Total kg:{" "}
+                              <span className="font-semibold text-gray-800">
+                                {kgTot}
+                              </span>
                             </p>
                           </div>
                           <button
@@ -1393,27 +1320,35 @@ const CajaRegistradora = ({ onVentaCompletada }) => {
                           </button>
                         </div>
 
-                        <p className="text-xs font-semibold text-teal-900">Kg por estado (precio igual /kg)</p>
+                        <p className="text-xs font-semibold text-teal-900">
+                          Kg por estado (precio igual /kg)
+                        </p>
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                           <BucketKgInput
                             label={`Verde (máx. ${stockKgPorMadurez(p, "verde")})`}
                             value={kg.verde}
                             maxKg={stockKgPorMadurez(p, "verde")}
-                            onCommit={(n) => actualizarKgBucket(index, "verde", n)}
+                            onCommit={(n) =>
+                              actualizarKgBucket(index, "verde", n)
+                            }
                             aria-label="Kilogramos palta verde"
                           />
                           <BucketKgInput
                             label={`Sazón (máx. ${stockKgPorMadurez(p, "sazon")})`}
                             value={kg.sazon}
                             maxKg={stockKgPorMadurez(p, "sazon")}
-                            onCommit={(n) => actualizarKgBucket(index, "sazon", n)}
+                            onCommit={(n) =>
+                              actualizarKgBucket(index, "sazon", n)
+                            }
                             aria-label="Kilogramos sazón"
                           />
                           <BucketKgInput
                             label={`Maduro (máx. ${stockKgPorMadurez(p, "maduro")})`}
                             value={kg.maduro}
                             maxKg={stockKgPorMadurez(p, "maduro")}
-                            onCommit={(n) => actualizarKgBucket(index, "maduro", n)}
+                            onCommit={(n) =>
+                              actualizarKgBucket(index, "maduro", n)
+                            }
                             aria-label="Kilogramos palta madura"
                           />
                         </div>
@@ -1431,7 +1366,10 @@ const CajaRegistradora = ({ onVentaCompletada }) => {
                   }
 
                   const maxPermitido = p ? stockDisponible(p) : 0;
-                  const cantNum = Math.max(1, Math.floor(precioNum(item.cantidad) || 1));
+                  const cantNum = Math.max(
+                    1,
+                    Math.floor(precioNum(item.cantidad) || 1),
+                  );
                   const sub = cantNum * precioU;
                   const alLimite = cantNum >= maxPermitido || maxPermitido <= 0;
                   return (
@@ -1441,18 +1379,19 @@ const CajaRegistradora = ({ onVentaCompletada }) => {
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0 flex-1">
-<<<<<<< HEAD
                           <p className="font-semibold text-sm text-gray-900">
                             {item.nombre}
                           </p>
-=======
-                          <p className="font-semibold text-sm text-gray-900">{item.nombre}</p>
-                          {item.tipo != null && String(item.tipo).trim() !== "" && String(item.tipo).trim() !== "—" ? (
+                          {item.tipo != null &&
+                          String(item.tipo).trim() !== "" &&
+                          String(item.tipo).trim() !== "—" ? (
                             <p className="text-[11px] text-amber-900/90 font-medium mt-0.5">
-                              Tipo: <span className="text-gray-800">{String(item.tipo).trim()}</span>
+                              Tipo:{" "}
+                              <span className="text-gray-800">
+                                {String(item.tipo).trim()}
+                              </span>
                             </p>
                           ) : null}
->>>>>>> e18060cc50de6555722e6795632c2431463190bd
                           <p className="text-[11px] text-gray-500 mt-0.5">
                             Unidad:{" "}
                             <span className="text-gray-700">
@@ -1474,17 +1413,10 @@ const CajaRegistradora = ({ onVentaCompletada }) => {
                         <dd className="text-right font-medium text-gray-800">
                           S/ {formatSoles(precioU)}
                         </dd>
-<<<<<<< HEAD
-                        <dt className="text-gray-500">Cantidad</dt>
-                        <dd className="text-right text-gray-800">{cantNum}</dd>
-                        <dt className="text-gray-500">Stock disponible</dt>
-                        <dd className="text-right text-amber-800 font-medium">
-                          {maxPermitido}
-                        </dd>
-=======
                         <dt className="text-gray-500">Cantidad (kg)</dt>
-                        <dd className="text-right text-gray-500 text-[11px]">Máx. {maxPermitido}</dd>
->>>>>>> e18060cc50de6555722e6795632c2431463190bd
+                        <dd className="text-right text-gray-500 text-[11px]">
+                          Máx. {maxPermitido}
+                        </dd>
                         <dt className="text-gray-500 col-span-2 pt-1 border-t border-gray-200 mt-1">
                           Subtotal
                         </dt>
@@ -1500,17 +1432,11 @@ const CajaRegistradora = ({ onVentaCompletada }) => {
                         >
                           −
                         </button>
-<<<<<<< HEAD
-                        <span className="w-10 text-center font-bold">
-                          {cantNum}
-                        </span>
-=======
                         <CartQtyField
                           value={cantNum}
                           maxPermitido={maxPermitido}
                           onCommit={(n) => actualizarCantidad(index, n)}
                         />
->>>>>>> e18060cc50de6555722e6795632c2431463190bd
                         <button
                           type="button"
                           disabled={alLimite}
@@ -1533,17 +1459,8 @@ const CajaRegistradora = ({ onVentaCompletada }) => {
               <div className="flex justify-between text-sm text-gray-600">
                 <span>Ítems en carrito</span>
                 <span>
-<<<<<<< HEAD
-                  {carrito.reduce(
-                    (n, i) =>
-                      n + Math.max(0, Math.floor(precioNum(i.cantidad) || 0)),
-                    0,
-                  )}{" "}
-                  u.
-=======
                   {carrito.reduce((n, i) => n + kgTotalesCarritoItem(i), 0)}{" "}
                   <span className="text-[11px] text-gray-400">kg</span>
->>>>>>> e18060cc50de6555722e6795632c2431463190bd
                 </span>
               </div>
               <div className="flex justify-between items-baseline font-bold">

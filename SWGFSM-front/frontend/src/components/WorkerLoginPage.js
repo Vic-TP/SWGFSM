@@ -59,22 +59,17 @@ const WorkerLoginPage = () => {
         </button>
       </header>
 
-<<<<<<< HEAD
-      <main className="flex-1 flex items-center justify-center px-4 py-10">
-        <div className="bg-[#E9FFF2] rounded-3xl shadow-2xl w-full max-w-md p-8 md:p-10">
-          <p className="text-sm text-emerald-800 mb-6">
-            Usa el correo y la contraseña que te asignó el administrador en la
-            sección Empleados.
-=======
       <main className="flex flex-1 items-center justify-center px-4 py-10">
         <div className="w-full max-w-md rounded-3xl border border-[#d4e9e2]/90 bg-white p-8 shadow-[0_24px_60px_-12px_rgba(30,57,50,0.18)] md:p-10">
           <p className="mb-6 text-sm leading-relaxed text-[#1e3932]/85">
-            Usa el correo y la contraseña que te asignó el administrador en la sección Empleados.
->>>>>>> e18060cc50de6555722e6795632c2431463190bd
+            Usa el correo y la contraseña que te asignó el administrador en la
+            sección Empleados.
           </p>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="mb-1 block text-sm font-medium text-[#1e3932]">Correo electrónico</label>
+              <label className="mb-1 block text-sm font-medium text-[#1e3932]">
+                Correo electrónico
+              </label>
               <input
                 type="email"
                 className={inputClass}
@@ -86,7 +81,9 @@ const WorkerLoginPage = () => {
               />
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium text-[#1e3932]">Contraseña</label>
+              <label className="mb-1 block text-sm font-medium text-[#1e3932]">
+                Contraseña
+              </label>
               <PasswordInput
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}

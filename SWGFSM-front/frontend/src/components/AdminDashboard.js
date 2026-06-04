@@ -7,7 +7,9 @@ import GestionTareas from "./GestionTareas";
 import TareasAsignadas from "./TareasAsignadas";
 import CajaRegistradora from "./CajaRegistradora";
 import Prediccion from "../predict/Prediccion";
-import PrediccionChartsPanel, { normalizeInventarioML } from "../predict/PrediccionCharts";
+import PrediccionChartsPanel, {
+  normalizeInventarioML,
+} from "../predict/PrediccionCharts";
 import PasswordInput from "./PasswordInput";
 import { nombreLineaVenta } from "../utils/tiendaProducto";
 
@@ -33,33 +35,6 @@ const isPanelVendedor = (trabajador) => {
   return rolesVendedor.includes(trabajador.rol);
 };
 
-<<<<<<< HEAD
-//Verifica que el JWT exista
-const getAuthToken = () => {
-  return sessionStorage.getItem("auth_token");
-};
-
-const fetchWithAuth = async (url, options = {}) => {
-  const token = getAuthToken();
-  const headers = {
-    "Content-Type": "application/json",
-    ...options.headers,
-  };
-
-  if (token) {
-    headers["Authorization"] = `Bearer ${token}`;
-  }
-
-  return fetch(url, {
-    ...options,
-    headers,
-  });
-};
-
-const sameLocalDay = (d1, d2) => {
-  const a = new Date(d1);
-  const b = new Date(d2);
-=======
 const etiquetaRolSidebar = (t) => {
   if (!t?.rol) return "—";
   if (t.rol === "Vendedor") return "VENDEDOR";
@@ -68,14 +43,15 @@ const etiquetaRolSidebar = (t) => {
 };
 
 const nombreCompletoSidebar = (t) => {
-  const partes = [t?.nombres, t?.apellidos].filter(Boolean).map((s) => String(s).trim());
+  const partes = [t?.nombres, t?.apellidos]
+    .filter(Boolean)
+    .map((s) => String(s).trim());
   return partes.length ? partes.join(" ").toUpperCase() : "";
 };
 
 const sameLocalDay = (a, b) => {
   const d1 = new Date(a);
   const d2 = new Date(b);
->>>>>>> e18060cc50de6555722e6795632c2431463190bd
   return (
     a.getFullYear() === b.getFullYear() &&
     a.getMonth() === b.getMonth() &&
@@ -179,13 +155,9 @@ const ventasToXlsxRows = (rows) =>
   rows.map((v) => {
     const fv = fechaVenta(v);
     const productos = Array.isArray(v.productos)
-<<<<<<< HEAD
       ? v.productos
-          .map((p) => `${p.nombre || ""} x${p.cantidad || ""}`)
+          .map((p) => `${nombreLineaVenta(p)} x${p.cantidad || ""}`)
           .join("; ")
-=======
-      ? v.productos.map((p) => `${nombreLineaVenta(p)} x${p.cantidad || ""}`).join("; ")
->>>>>>> e18060cc50de6555722e6795632c2431463190bd
       : "";
     return {
       numeroVenta: v.numeroVenta ?? "",
@@ -412,20 +384,12 @@ const AdminDashboard = () => {
     hace30.setDate(hace30.getDate() - 30);
 
     try {
-<<<<<<< HEAD
-      const [rv, rp, rc, rpred] = await Promise.all([
-        fetchWithAuth(API_URL_VENTAS),
-        fetchWithAuth(API_URL_PRODUCTOS),
-        fetchWithAuth(API_URL_CLIENTES),
-        fetchWithAuth(`${API_URL_PREDICCION}/resumen`),
-=======
       const [rv, rp, rc, rpred, rinv] = await Promise.all([
         fetch(API_URL_VENTAS),
         fetch(API_URL_PRODUCTOS),
         fetch(API_URL_CLIENTES),
         fetch(`${API_URL_PREDICCION}/resumen`),
         fetch(`${API_URL_PREDICCION}/inventario`),
->>>>>>> e18060cc50de6555722e6795632c2431463190bd
       ]);
 
       if (!rv.ok) throw new Error(`Ventas HTTP ${rv.status}`);
@@ -450,15 +414,6 @@ const AdminDashboard = () => {
         predData = pr?.data || null;
       }
 
-<<<<<<< HEAD
-      const ventasHoyList = ventasArr.filter((v) =>
-        sameLocalDay(fechaVenta(v), hoy),
-      );
-      const ventasHoyMonto = ventasHoyList.reduce(
-        (s, v) => s + Number(v.total || 0),
-        0,
-      );
-=======
       let mlPredictions = [];
       if (rinv.ok) {
         const inv = await rinv.json();
@@ -467,9 +422,13 @@ const AdminDashboard = () => {
         }
       }
 
-      const ventasHoyList = ventasArr.filter((v) => sameLocalDay(fechaVenta(v), hoy));
-      const ventasHoyMonto = ventasHoyList.reduce((s, v) => s + Number(v.total || 0), 0);
->>>>>>> e18060cc50de6555722e6795632c2431463190bd
+      const ventasHoyList = ventasArr.filter((v) =>
+        sameLocalDay(fechaVenta(v), hoy),
+      );
+      const ventasHoyMonto = ventasHoyList.reduce(
+        (s, v) => s + Number(v.total || 0),
+        0,
+      );
 
       const ventas7 = ventasArr.filter((v) => fechaVenta(v) >= hace7);
       const ventas30 = ventasArr.filter((v) => fechaVenta(v) >= hace30);
@@ -1248,13 +1207,8 @@ const AdminDashboard = () => {
             <div className="rounded-3xl border border-lime-200 bg-white p-6 shadow-sm">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div>
-<<<<<<< HEAD
-                  <h2 className="text-lg font-bold text-emerald-900">
-                    Palta madura (predicción ML)
-=======
                   <h2 className="text-lg font-bold uppercase tracking-wide text-emerald-900">
                     PREDICCION DE PALTAS
->>>>>>> e18060cc50de6555722e6795632c2431463190bd
                   </h2>
                   <p className="mt-1 text-sm text-gray-600">
                     Kilos estimados por estado de madurez según el modelo de
@@ -1307,16 +1261,12 @@ const AdminDashboard = () => {
                 </div>
               </div>
               <p className="mt-4 text-xs text-gray-500">
-<<<<<<< HEAD
-                Lotes de inventario considerados:{" "}
-                <strong>{dash.loading ? "…" : dash.lotesInventarioML}</strong>.
-                La palta clasificada como <strong>madura</strong> es la que el
-                sistema anticipa lista o casi lista para venta inmediata.
-=======
                 Sub-lotes analizados por el modelo:{" "}
-                <strong>{dash.loading ? "…" : dash.mlPredictions.length}</strong>. La palta en estado{" "}
-                <strong>maduro</strong> es la que el sistema anticipa lista o casi lista para venta inmediata.
->>>>>>> e18060cc50de6555722e6795632c2431463190bd
+                <strong>
+                  {dash.loading ? "…" : dash.mlPredictions.length}
+                </strong>
+                . La palta en estado <strong>maduro</strong> es la que el
+                sistema anticipa lista o casi lista para venta inmediata.
               </p>
 
               <PrediccionChartsPanel
@@ -2259,19 +2209,6 @@ const AdminDashboard = () => {
     <div className="min-h-screen flex bg-lime-100 font-sans">
       <aside className="w-64 bg-emerald-950 text-lime-50 flex flex-col shadow-2xl z-10 flex-shrink-0">
         <div className="p-6 border-b border-emerald-800">
-<<<<<<< HEAD
-          <p className="text-xs text-emerald-400 uppercase tracking-widest mb-1">
-            {isPanelVendedor(trabajadorSesion)
-              ? "Panel vendedor"
-              : "Panel Admin"}
-          </p>
-          <h1 className="text-base font-bold leading-tight">
-            Frutería Señor de Muruhuay
-          </h1>
-          {trabajadorSesion?.nombres && (
-            <p className="text-xs text-emerald-300/90 mt-2">
-              {trabajadorSesion.nombres} {trabajadorSesion.apellidos || ""}
-=======
           <h1 className="text-sm font-bold leading-snug tracking-wide text-white uppercase">
             FRUTERIA SEÑOR DE MURUHUAY
           </h1>
@@ -2281,7 +2218,6 @@ const AdminDashboard = () => {
           {nombreCompletoSidebar(trabajadorSesion) && (
             <p className="text-xs text-emerald-300/95 mt-1.5 uppercase tracking-wide">
               NOMBRE: {nombreCompletoSidebar(trabajadorSesion)}
->>>>>>> e18060cc50de6555722e6795632c2431463190bd
             </p>
           )}
         </div>
