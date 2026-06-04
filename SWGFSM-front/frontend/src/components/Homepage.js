@@ -1,6 +1,7 @@
 // src/components/Homepage.js — catálogo desde API producto (inventario) + ventas online
 
 import React, { useState, useEffect, useMemo } from "react";
+import {Toaster, toast} from "sonner";
 import Header from "./Header";
 import Footer from "./Footer";
 import CartSidebar from "./CartSidebar";
@@ -61,6 +62,27 @@ const IMG_DEFAULTS = {
   naval: paltaNaval,
   selva: paltaSelva,
   variadas: paltasVariadas,
+};
+
+const getAuthToken = () => {
+  return sessionStorage.getItem("auth_token");
+};
+
+const fetchWithAuth = async (url, options = {}) => {
+  const token = getAuthToken();
+  const headers = {
+    "Content-Type": "application/json",
+    ...options.headers,
+  };
+
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  return fetch(url, {
+    ...options,
+    headers,
+  });
 };
 
 const idProducto = (v) => {
@@ -285,7 +307,7 @@ const HomePage = () => {
     (async () => {
       setLoadingProductos(true);
       try {
-        const res = await fetch(API_URL_PRODUCTOS);
+        const res = await fetchWithAuth(API_URL_PRODUCTOS);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         const raw = Array.isArray(data) ? data : [];
@@ -412,10 +434,14 @@ const HomePage = () => {
   const handleCheckout = () => {
     const logged = localStorage.getItem("cliente_logueado") === "true";
     if (!logged) {
-      alert("Para pagar debes iniciar sesión o crear una cuenta.");
-      window.location.href = "/login";
-      return;
-    }
+          toast("Para poder realizar el pago debes iniciar sesión o crear una cuenta.", {  //ESTO SE USA? YA LO REALIZA EL COMPONENTE CARTSIDEBAR
+            action: {
+              label: 'Aceptar',
+              onClick: () => window.location.href = "/login"
+            }
+          });
+          return;
+        }
     setShowPayment(true);
   };
 
@@ -511,7 +537,7 @@ const HomePage = () => {
     };
 
     try {
-      const response = await fetch(API_URL_VENTAS, {
+      const response = await fetchWithAuth(API_URL_VENTAS, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(ventaData),
@@ -559,7 +585,7 @@ const HomePage = () => {
 
         setCartItems([]);
         setIsCartOpen(false);
-        alert("¡Pedido realizado con éxito! Se ha guardado en el sistema.");
+       toast.success("¡Pedido realizado con éxito! Se ha guardado en el sistema.");
         try {
           window.dispatchEvent(new Event("swgfsm-stock-actualizado"));
         } catch {
@@ -647,6 +673,7 @@ const HomePage = () => {
 
   return (
     <div className="min-h-screen bg-white">
+      <Toaster position="bottom-center" richColors success/>
       {nutriLightbox && (
         <div
           className="fixed inset-0 z-[100] flex items-center justify-center bg-black/75 p-4 sm:p-8"

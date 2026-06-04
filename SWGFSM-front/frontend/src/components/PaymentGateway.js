@@ -64,10 +64,15 @@ const apiBase = () => String(process.env.REACT_APP_API_URL || "http://localhost:
 async function runSimulatedPayment({ method, total, declineTest }) {
   await delay(600 + Math.random() * 500);
   const url = `${apiBase()}/api/pago-simulado`;
+  const token = sessionStorage.getItem("auth_token");
+  const headers = { "Content-Type": "application/json" };
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
   try {
     const r = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify({
         method,
         total: Number(total),
@@ -129,7 +134,12 @@ const PaymentGateway = ({ total, onSuccess, onCancel, onMethodSelect }) => {
     (async () => {
       setEntregaLoading(true);
       try {
-        const r = await fetch(`${apiBase()}/api/entrega/config`);
+        const token = sessionStorage.getItem("auth_token");
+        const headers = {};
+        if (token) {
+          headers["Authorization"] = `Bearer ${token}`;
+        }
+        const r = await fetch(`${apiBase()}/api/entrega/config`, { headers });
         if (!r.ok) throw new Error("config");
         const data = await r.json();
         if (!cancel) {

@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { Toaster, toast } from "sonner";
 import PasswordInput from "./PasswordInput";
 
 const API_LOGIN = "http://localhost:5000/api/empleados/login";
@@ -22,7 +23,7 @@ const WorkerLoginPage = () => {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        alert(data.message || "No se pudo iniciar sesión.");
+        toast.error("No se pudo iniciar sesión.");
         return;
       }
       if (data.empleado) {
@@ -44,6 +45,7 @@ const WorkerLoginPage = () => {
 
   return (
     <div className="flex min-h-screen flex-col bg-gradient-to-br from-[#d4e9e2]/55 via-white to-[#f6f4ef]">
+      <Toaster position="bottom-center" richColors success/>
       <header className="flex items-center justify-between bg-[#1e3932] px-6 py-4 shadow-md md:px-10">
         <h1 className="text-base font-semibold tracking-tight text-white md:text-xl">
           Frutería Señor de Muruhuay — Acceso trabajador

@@ -2,6 +2,7 @@
 
 import React, { useState } from "react"; // ← Eliminado useEffect
 import PasswordInput from "./PasswordInput";
+import { Toaster, toast } from 'sonner'
 
 const API_URL_CLIENTES = "http://localhost:5000/api/clientes";
 
@@ -46,6 +47,7 @@ const LoginPage = () => {
     },
   ];
 
+
   // Detectar si es admin por el correo
   const isAdminEmail = (emailStr) => emailStr.endsWith("@muruhuay.com");
 
@@ -55,9 +57,7 @@ const LoginPage = () => {
     // ===================== REGISTRO (solo clientes) → MongoDB =====================
     if (isRegister) {
       if (isAdminEmail(regEmail)) {
-        alert(
-          "No puedes registrarte con un correo @muruhuay.com. Este dominio es solo para administradores.",
-        );
+        toast.error("No puedes registrarte con un correo @muruhuay.com. Este dominio es solo para administradores.")
         return;
       }
 
@@ -68,7 +68,7 @@ const LoginPage = () => {
         !regTelefono ||
         !regPassword
       ) {
-        alert("Completa todos los campos para crear tu cuenta.");
+        toast.error("Completa todos los campos para crear tu cuenta."); //ESTO YA SE HACE POR DEFECTO, ES NECESARIO?
         return;
       }
 
@@ -86,7 +86,7 @@ const LoginPage = () => {
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
-          alert(data.message || "No se pudo crear la cuenta.");
+          toast.error("No se pudo crear la cuenta.");
           return;
         }
         const clienteFront = mapServerCliente(data.cliente || data);
@@ -99,13 +99,13 @@ const LoginPage = () => {
         localStorage.setItem("cliente_logueado", "true");
         localStorage.setItem("cliente_actual", JSON.stringify(clienteFront));
 
-        alert(
-          `Cuenta creada para ${clienteFront.nombre}. Tus datos quedaron guardados en el servidor.`,
-        );
-        window.location.href = "/cliente/perfil";
+        toast.success(`Cuenta creada para ${clienteFront.nombre}. Tus datos quedaron guardados en el servidor.`)
+        setTimeout(() => {
+          window.location.href = "/cliente/perfil";
+        }, 1000);
       } catch (err) {
         console.error(err);
-        alert(
+        toast.error(
           "No se pudo conectar con el servidor. ¿Está el backend en marcha?",
         );
       }
@@ -118,7 +118,7 @@ const LoginPage = () => {
         (u) => u.email === email && u.password === password,
       );
       if (!admin) {
-        alert("Correo o contrasena de administrador incorrectos.");
+        toast.error("Correo o contrasena de administrador incorrectos."); //ESTO ES NECESARIO?
         return;
       }
 
@@ -139,8 +139,10 @@ const LoginPage = () => {
         "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImxlZ2FjeS1tdXJ1aHVheSIsImNvcnJlbyI6Im1hcmlhQG11cnVodWF5LmNvbSIsInJvbCI6IkFkbWluaXN0cmFkb3IgZGUgYWxtYWNlbiIsIm5vbWJyZXMiOiJNYXLDrWEiLCJpYXQiOjE2MDAwMDAwMDAsImV4cCI6OTk5OTk5OTk5OX0.mock-signature";
       sessionStorage.setItem("auth_token", fakeAdminToken);
 
-      alert(`Bienvenida ${admin.nombre}, acceso de administrador concedido.`);
-      window.location.href = "/admin-dashboard";
+      toast.success(`Bienvenida ${admin.nombre}, acceso de administrador concedido.`); //DENUEVO, NECESARIO? PORQUE ESTE ADMINISTRADOR SE LOGEA EN OTRO APARTADO QUE NO ES ACCESO TRABAJADOR?
+      setTimeout(() => {
+        window.location.href = "/admin-dashboard";
+      }, 1000);
       return;
     }
 
@@ -156,7 +158,7 @@ const LoginPage = () => {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        alert(data.message || "Correo o contraseña incorrectos.");
+        toast.error(data.message || "Correo o contraseña incorrectos.");
         return;
       }
       const clienteFront = mapServerCliente(data.cliente);
@@ -169,8 +171,11 @@ const LoginPage = () => {
       localStorage.setItem("cliente_logueado", "true");
       localStorage.setItem("cliente_actual", JSON.stringify(clienteFront));
 
-      alert(`Bienvenido/a ${clienteFront.nombre}`);
-      window.location.href = "/";
+      toast.success(`Bienvenido/a ${clienteFront.nombre}`)
+      setTimeout(() => {
+        window.location.href = "/";
+      }, 1000);
+
     } catch (err) {
       console.error(err);
       alert("No se pudo conectar con el servidor. ¿Está el backend en marcha?");
@@ -179,6 +184,7 @@ const LoginPage = () => {
 
   return (
     <div className="flex min-h-screen flex-col bg-gradient-to-br from-[#d4e9e2]/55 via-white to-[#f6f4ef]">
+      <Toaster position ="bottom-center" richColors success/>
       <header className="flex items-center justify-between bg-[#1e3932] px-6 py-4 shadow-md md:px-10">
         <h1 className="text-base font-semibold tracking-tight text-white md:text-xl">
           Frutería Señor de Muruhuay — Acceso
@@ -266,7 +272,7 @@ const LoginPage = () => {
                   type="button"
                   className="hover:text-[#006241] hover:underline"
                   onClick={() =>
-                    alert("Contacta con soporte para recuperar tu contraseña")
+                    toast.warning("Contacta con soporte para recuperar tu contraseña") //0 troubleshooting
                   }
                 >
                   ¿Olvidaste tu contraseña?
