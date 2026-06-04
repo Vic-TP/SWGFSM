@@ -17,7 +17,7 @@ const PasswordInput = ({
   const [show, setShow] = useState(false);
 
   const field =
-    "w-full rounded-lg border border-gray-300 bg-white pl-4 pr-11 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-transparent " +
+    "w-full rounded-lg border border-[#d4e9e2] bg-white pl-4 pr-11 py-2.5 text-sm text-[#1e3932] placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#006241]/35 focus:border-[#006241]/45 " +
     inputClassName;
 
   return (

@@ -1,8 +1,10 @@
 // src/components/VentasAdmin.js - VERSIÓN CORREGIDA
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
+import { nombreLineaVenta, mergeTipoLineaDesdeCatalogo } from "../utils/tiendaProducto";
 
 const API_URL_VENTAS = "http://localhost:5000/api/ventas";
+const API_URL_PRODUCTOS = "http://localhost:5000/api/producto";
 
 const getAuthToken = () => {
   return sessionStorage.getItem("auth_token");
@@ -32,6 +34,18 @@ const VentasAdmin = () => {
   const [filterEstado, setFilterEstado] = useState("todos");
   const [filterOrigen, setFilterOrigen] = useState("todos");
   const [ventaDetalle, setVentaDetalle] = useState(null);
+  const [catalogoProductos, setCatalogoProductos] = useState([]);
+
+  const productoPorId = useMemo(() => {
+    const m = new Map();
+    catalogoProductos.forEach((p) => {
+      if (p?._id != null) m.set(String(p._id), p);
+    });
+    return m;
+  }, [catalogoProductos]);
+
+  const etiquetaProductoVenta = (line) =>
+    nombreLineaVenta(mergeTipoLineaDesdeCatalogo(line, productoPorId));
 
   /** CAJA = trabajador en caja; ONLINE = cliente compró en la web */
   const etiquetaOrigen = (venta) => {
@@ -44,6 +58,18 @@ const VentasAdmin = () => {
     if (venta.origen === "CAJA") return "CAJA";
     if (venta.origen === "ONLINE") return "ONLINE";
     return "SIN";
+  };
+
+  const etiquetaEntrega = (venta) => {
+    if (venta?.tipoEntrega === "METROPOLITANO") {
+      const nom = venta.estacionMetropolitanoNombre || "Estación";
+      const lin = venta.estacionMetropolitanoLinea ? ` (${venta.estacionMetropolitanoLinea})` : "";
+      return `Metropolitano — ${nom}${lin}`;
+    }
+    if (venta?.tipoEntrega === "TIENDA") {
+      return venta.tiendaDireccion ? `Recojo en tienda — ${venta.tiendaDireccion}` : "Recojo en tienda";
+    }
+    return null;
   };
 
   // Cargar ventas
@@ -70,6 +96,21 @@ const VentasAdmin = () => {
 
   useEffect(() => {
     fetchVentas();
+  }, []);
+
+  useEffect(() => {
+    let cancel = false;
+    fetch(API_URL_PRODUCTOS)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data) => {
+        if (!cancel) setCatalogoProductos(Array.isArray(data) ? data : []);
+      })
+      .catch(() => {
+        if (!cancel) setCatalogoProductos([]);
+      });
+    return () => {
+      cancel = true;
+    };
   }, []);
 
   const cambiarOrigen = async (id, nuevoOrigen) => {
@@ -394,10 +435,14 @@ const VentasAdmin = () => {
                       {venta.cliente}
                     </td>
                     <td className="px-6 py-3 text-gray-600">
+<<<<<<< HEAD
                       {venta.productos
                         ?.slice(0, 2)
                         .map((p) => `${p.nombre} x${p.cantidad}`)
                         .join(", ")}
+=======
+                      {venta.productos?.slice(0, 2).map((p) => `${etiquetaProductoVenta(p)} x${p.cantidad}`).join(", ")}
+>>>>>>> e18060cc50de6555722e6795632c2431463190bd
                       {venta.productos?.length > 2 && " ..."}
                     </td>
                     <td
@@ -570,6 +615,16 @@ const VentasAdmin = () => {
                       S/ {(ventaDetalle.total || 0).toFixed(2)}
                     </span>
                   </p>
+                  {etiquetaEntrega(ventaDetalle) && (
+                    <p className="text-sm text-gray-700 mt-2">
+                      Entrega: <span className="font-semibold">{etiquetaEntrega(ventaDetalle)}</span>
+                    </p>
+                  )}
+                  {ventaDetalle.tipoEntrega === "METROPOLITANO" && ventaDetalle.estacionReferencia && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Punto de encuentro: {ventaDetalle.estacionReferencia}
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -602,6 +657,7 @@ const VentasAdmin = () => {
                     </thead>
                     <tbody>
                       {(ventaDetalle.productos || []).map((p, idx) => (
+<<<<<<< HEAD
                         <tr
                           key={`${p.nombre}-${idx}`}
                           className="border-b last:border-0"
@@ -621,6 +677,14 @@ const VentasAdmin = () => {
                           <td className="px-4 py-3 text-right font-semibold text-gray-800">
                             S/ {(p.subtotal || 0).toFixed(2)}
                           </td>
+=======
+                        <tr key={`${String(p.productoId ?? "")}-${idx}`} className="border-b last:border-0">
+                          <td className="px-4 py-3 font-medium text-gray-800">{etiquetaProductoVenta(p)}</td>
+                          <td className="px-4 py-3 text-center text-gray-700">{p.cantidad}</td>
+                          <td className="px-4 py-3 text-center text-gray-700">{p.medida || "—"}</td>
+                          <td className="px-4 py-3 text-right text-gray-700">S/ {(p.precioUnitario || 0).toFixed(2)}</td>
+                          <td className="px-4 py-3 text-right font-semibold text-gray-800">S/ {(p.subtotal || 0).toFixed(2)}</td>
+>>>>>>> e18060cc50de6555722e6795632c2431463190bd
                         </tr>
                       ))}
                       {(ventaDetalle.productos || []).length === 0 && (

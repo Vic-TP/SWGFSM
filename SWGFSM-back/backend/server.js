@@ -37,6 +37,7 @@ mongoose
   .catch((err) => console.error("Error de conexión a MongoDB:", err));
 
 // --- Importación de Rutas ---
+<<<<<<< HEAD
 const productoRoutes = require("./routes/productoRoutes");
 const inventarioRoutes = require("./routes/InventarioRoutes");
 const ventasRoutes = require("./routes/ventasRoutes");
@@ -58,6 +59,30 @@ app.use("/api/proveedores", verifyJWT, proveedorRoutes);
 app.use("/api/prediccion", verifyJWT, prediccionRoutes); // Endpoint para las predicciones
 app.use("/api/pago-simulado", verifyJWT, pagoSimuladoRoutes); // Simulador de pasarela (sin PSP real)
 app.use("/api/tareas", verifyJWT, tareaRoutes);
+=======
+const productoRoutes = require('./routes/productoRoutes');
+const inventarioRoutes = require('./routes/InventarioRoutes');
+const ventasRoutes = require('./routes/ventasRoutes');
+const proveedorRoutes = require('./routes/proveedorRoutes');
+const clienteRoutes = require('./routes/clienteRoutes');
+const empleadoRoutes = require('./routes/empleadoRoutes');
+const prediccionRoutes = require('./routes/prediccion'); // Nueva ruta de ML
+const pagoSimuladoRoutes = require('./routes/pagoSimuladoRoutes');
+const tareaRoutes = require('./routes/tareaRoutes');
+const entregaRoutes = require('./routes/entregaRoutes');
+
+// --- Definición de Endpoints ---
+app.use('/api/producto', productoRoutes);
+app.use('/api/inventario', inventarioRoutes);
+app.use('/api/ventas', ventasRoutes);
+app.use('/api/proveedores', proveedorRoutes);
+app.use('/api/clientes', clienteRoutes);
+app.use('/api/empleados', empleadoRoutes);
+app.use('/api/prediccion', prediccionRoutes); // Endpoint para las predicciones
+app.use('/api/pago-simulado', pagoSimuladoRoutes); // Simulador de pasarela (sin PSP real)
+app.use('/api/tareas', tareaRoutes);
+app.use('/api/entrega', entregaRoutes);
+>>>>>>> e18060cc50de6555722e6795632c2431463190bd
 
 // Ruta de prueba
 app.get("/api/test", (req, res) => {

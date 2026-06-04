@@ -4,28 +4,28 @@ import React from "react";
 
 const Footer = () => {
   return (
-    <footer className="w-full bg-[#F5FFB5] py-10">
-      <div className="max-w-6xl mx-auto px-8 grid gap-8 md:grid-cols-3 text-[#1C3A1A] font-mono">
+    <footer className="w-full bg-[#1e3932] py-12 text-[#f5f5f0]">
+      <div className="max-w-6xl mx-auto px-6 sm:px-8 grid gap-10 md:grid-cols-3">
         {/* Columna 1: Contacto */}
         <div>
-          <p className="font-semibold text-lg">
+          <p className="text-sm font-semibold tracking-wide text-[#d4e9e2]">
             Contacto para realizar Pedidos:
           </p>
-          <p>celular:</p>
-          <p className="mt-2">966 142 980</p>
-          <p>988 133 254</p>
+          <p className="mt-4 text-xs font-medium tracking-wide text-[#d4e9e2]/80">Celular</p>
+          <p className="mt-2 text-sm font-semibold text-white">966 142 980</p>
+          <p className="text-sm font-semibold text-white">988 133 254</p>
         </div>
 
         {/* Columna Dirección */}
         <div className="text-left">
-          <h3 className="font-bold text-lg text-emerald-900 mb-2">
+          <h3 className="mb-4 text-sm font-semibold tracking-wide text-[#d4e9e2]">
             Dirección:
           </h3>
           <a
             href="https://maps.app.goo.gl/g1d1cjpqv94DjvpQ6"
             target="_blank"
             rel="noopener noreferrer"
-            className="font-mono text-emerald-900 underline hover:text-emerald-700"
+            className="text-sm text-white/90 underline decoration-[#d4e9e2]/50 underline-offset-4 transition-colors hover:text-white hover:decoration-[#d4e9e2]"
           >
             Av. Mercado Caqueta N° 800, RIMAC
           </a>
@@ -33,8 +33,12 @@ const Footer = () => {
 
         {/* Columna 3: Sobre Nosotros */}
         <div>
-          <p className="font-semibold text-lg">Sobre Nosotros:</p>
-          <p>Comercializadora de Frutas Señor de Muruhuay se dedica a la venta y distribución de paltas a mercados locales y mayoristas. Ofrecemos paltas de alta calidad, cuidadosamente seleccionadas, en variedades como Hass, Fuerte y paltas de la selva, adaptándonos a la temporada y a las preferencias del mercado.</p>
+          <p className="text-sm font-semibold tracking-wide text-[#d4e9e2]">Sobre Nosotros</p>
+          <p className="mt-4 text-sm leading-relaxed text-white/85">
+            Comercializadora de Frutas Señor de Muruhuay se dedica a la venta y distribución de paltas a mercados locales y
+            mayoristas. Ofrecemos paltas de alta calidad, cuidadosamente seleccionadas, en variedades como Hass, Fuerte y
+            paltas de la selva, adaptándonos a la temporada y a las preferencias del mercado.
+          </p>
         </div>
       </div>
     </footer>

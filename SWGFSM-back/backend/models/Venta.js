@@ -34,6 +34,10 @@ const ventaSchema = new mongoose.Schema({
   productos: [{
     productoId: { type: String, required: false },
     nombre: { type: String, required: true },
+    /** Variedad / tipo de palta (p. ej. Hall, Hass), alineado con catálogo Producto */
+    tipo: { type: String, required: false, trim: true },
+    /** Madurez vendida: descuenta stockPaltaMadura / Verde / Sazon en producto (maduro|verde|sazon) */
+    madurez: { type: String, required: false, trim: true },
     cantidad: { type: Number, required: true, min: 1 },
     precioUnitario: { type: Number, required: true, min: 0 },
     medida: { type: String, required: false, default: "1kg" },
@@ -67,6 +71,37 @@ const ventaSchema = new mongoose.Schema({
     type: String,
     enum: ['CAJA', 'ONLINE'],
     required: false
+  },
+  /** TIENDA = recojo en local; METROPOLITANO = entrega en estación acordada */
+  tipoEntrega: {
+    type: String,
+    enum: ['TIENDA', 'METROPOLITANO'],
+    required: false
+  },
+  estacionMetropolitanoId: {
+    type: String,
+    required: false,
+    trim: true
+  },
+  estacionMetropolitanoNombre: {
+    type: String,
+    required: false,
+    trim: true
+  },
+  estacionMetropolitanoLinea: {
+    type: String,
+    required: false,
+    trim: true
+  },
+  estacionReferencia: {
+    type: String,
+    required: false,
+    trim: true
+  },
+  tiendaDireccion: {
+    type: String,
+    required: false,
+    trim: true
   },
   comprobante: {
     type: String,
