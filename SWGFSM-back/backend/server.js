@@ -1,10 +1,9 @@
 // backend/server.js - UNIFICADO CON CRON Y ML
-
-const express = require('express');
-const mongoose = require('mongoose');
-const cors = require('cors');
-const cron = require('node-cron'); // Nueva dependencia
-require('dotenv').config();
+const express = require("express");
+const mongoose = require("mongoose");
+const cors = require("cors");
+const cron = require("node-cron"); // Nueva dependencia
+require("dotenv").config();
 
 const app = express();
 
@@ -14,7 +13,7 @@ app.use(cors());
 
 // --- Configuración de Base de Datos ---
 const mongoURI = process.env.MONGO_URI;
-const mongoDbName = process.env.MONGO_DB_NAME || 'test';
+const mongoDbName = process.env.MONGO_DB_NAME || "test";
 
 mongoose
   .connect(mongoURI, { dbName: mongoDbName })
@@ -24,7 +23,7 @@ mongoose
     // --- Lógica de Machine Learning (Cron Job) ---
     // Importamos el trainer solo después de conectar a la DB
     const { entrenarModelo } = require("./ml/trainer");
-    
+
     // 1. Primer entrenamiento al arrancar el servidor
     console.log("Iniciando entrenamiento inicial del modelo...");
     entrenarModelo();
@@ -35,33 +34,34 @@ mongoose
       entrenarModelo();
     });
   })
-  .catch((err) => console.error('Error de conexión a MongoDB:', err));
+  .catch((err) => console.error("Error de conexión a MongoDB:", err));
 
 // --- Importación de Rutas ---
-const productoRoutes = require('./routes/productoRoutes');
-const inventarioRoutes = require('./routes/InventarioRoutes');
-const ventasRoutes = require('./routes/ventasRoutes');
-const proveedorRoutes = require('./routes/proveedorRoutes');
-const clienteRoutes = require('./routes/clienteRoutes');
-const empleadoRoutes = require('./routes/empleadoRoutes');
-const prediccionRoutes = require('./routes/prediccion'); // Nueva ruta de ML
-const pagoSimuladoRoutes = require('./routes/pagoSimuladoRoutes');
-const tareaRoutes = require('./routes/tareaRoutes');
+const productoRoutes = require("./routes/productoRoutes");
+const inventarioRoutes = require("./routes/InventarioRoutes");
+const ventasRoutes = require("./routes/ventasRoutes");
+const proveedorRoutes = require("./routes/proveedorRoutes");
+const clienteRoutes = require("./routes/clienteRoutes");
+const empleadoRoutes = require("./routes/empleadoRoutes");
+const prediccionRoutes = require("./routes/prediccion"); // Nueva ruta de ML
+const pagoSimuladoRoutes = require("./routes/pagoSimuladoRoutes");
+const tareaRoutes = require("./routes/tareaRoutes");
+const verifyJWT = require("./middleware/verifyJWT"); // Middleware para proteger rutas
 
 // --- Definición de Endpoints ---
-app.use('/api/producto', productoRoutes);
-app.use('/api/inventario', inventarioRoutes);
-app.use('/api/ventas', ventasRoutes);
-app.use('/api/proveedores', proveedorRoutes);
-app.use('/api/clientes', clienteRoutes);
-app.use('/api/empleados', empleadoRoutes);
-app.use('/api/prediccion', prediccionRoutes); // Endpoint para las predicciones
-app.use('/api/pago-simulado', pagoSimuladoRoutes); // Simulador de pasarela (sin PSP real)
-app.use('/api/tareas', tareaRoutes);
+app.use("/api/clientes", clienteRoutes);
+app.use("/api/empleados", empleadoRoutes);
+app.use("/api/producto", verifyJWT, productoRoutes);
+app.use("/api/inventario", verifyJWT, inventarioRoutes);
+app.use("/api/ventas", verifyJWT, ventasRoutes);
+app.use("/api/proveedores", verifyJWT, proveedorRoutes);
+app.use("/api/prediccion", verifyJWT, prediccionRoutes); // Endpoint para las predicciones
+app.use("/api/pago-simulado", verifyJWT, pagoSimuladoRoutes); // Simulador de pasarela (sin PSP real)
+app.use("/api/tareas", verifyJWT, tareaRoutes);
 
 // Ruta de prueba
-app.get('/api/test', (req, res) => {
-  res.json({ message: 'Backend y sistema de cron funcionando' });
+app.get("/api/test", (req, res) => {
+  res.json({ message: "Backend y sistema de cron funcionando" });
 });
 
 // --- Lanzamiento del Servidor ---

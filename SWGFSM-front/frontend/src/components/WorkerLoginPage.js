@@ -23,8 +23,12 @@ const WorkerLoginPage = () => {
         return;
       }
       if (data.empleado) {
-        localStorage.setItem("trabajador_logueado", "true");
-        localStorage.setItem("trabajador_actual", JSON.stringify(data.empleado));
+        // Guardar token JWT en sessionStorage
+        if (data.token) {
+          sessionStorage.setItem("auth_token", data.token);
+        }
+        // Guardar datos del empleado en sessionStorage (mismo lugar que en LoginPage)
+        sessionStorage.setItem("user_profile", JSON.stringify(data.empleado));
       }
       window.location.href = "/admin-dashboard";
     } catch (err) {
@@ -55,8 +59,8 @@ const WorkerLoginPage = () => {
       <main className="flex-1 flex items-center justify-center px-4 py-10">
         <div className="bg-[#E9FFF2] rounded-3xl shadow-2xl w-full max-w-md p-8 md:p-10">
           <p className="text-sm text-emerald-800 mb-6">
-            Usa el correo y la contraseña que te asignó el administrador en la sección
-            Empleados.
+            Usa el correo y la contraseña que te asignó el administrador en la
+            sección Empleados.
           </p>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>

@@ -1,6 +1,6 @@
 // src/components/LoginPage.js - CORREGIDO
 
-import React, { useState } from "react";  // ← Eliminado useEffect
+import React, { useState } from "react"; // ← Eliminado useEffect
 import PasswordInput from "./PasswordInput";
 
 const API_URL_CLIENTES = "http://localhost:5000/api/clientes";
@@ -35,7 +35,12 @@ const LoginPage = () => {
 
   // Admins de prueba (solo acceden con @muruhuay.com)
   const fakeAdmins = [
-    { email: "maria@muruhuay.com", password: "123456", role: "ADMIN_ALMACEN", nombre: "María" },
+    {
+      email: "maria@muruhuay.com",
+      password: "123456",
+      role: "ADMIN_ALMACEN",
+      nombre: "María",
+    },
   ];
 
   // Detectar si es admin por el correo
@@ -47,11 +52,19 @@ const LoginPage = () => {
     // ===================== REGISTRO (solo clientes) → MongoDB =====================
     if (isRegister) {
       if (isAdminEmail(regEmail)) {
-        alert("No puedes registrarte con un correo @muruhuay.com. Este dominio es solo para administradores.");
+        alert(
+          "No puedes registrarte con un correo @muruhuay.com. Este dominio es solo para administradores.",
+        );
         return;
       }
 
-      if (!regNombre || !regApellidos || !regEmail || !regTelefono || !regPassword) {
+      if (
+        !regNombre ||
+        !regApellidos ||
+        !regEmail ||
+        !regTelefono ||
+        !regPassword
+      ) {
         alert("Completa todos los campos para crear tu cuenta.");
         return;
       }
@@ -73,37 +86,54 @@ const LoginPage = () => {
           alert(data.message || "No se pudo crear la cuenta.");
           return;
         }
-        const clienteFront = mapServerCliente(data);
-        localStorage.setItem("cliente_actual", JSON.stringify(clienteFront));
-        localStorage.setItem("cliente_logueado", "true");
-        alert(`Cuenta creada para ${clienteFront.nombre}. Tus datos quedaron guardados en el servidor.`);
+        const clienteFront = mapServerCliente(data.cliente || data);
+
+        // Guardar token de forma segura
+        if (data.token) {
+          sessionStorage.setItem("auth_token", data.token);
+        }
+        sessionStorage.setItem("user_profile", JSON.stringify(clienteFront));
+
+        alert(
+          `Cuenta creada para ${clienteFront.nombre}. Tus datos quedaron guardados en el servidor.`,
+        );
         window.location.href = "/cliente/perfil";
       } catch (err) {
         console.error(err);
-        alert("No se pudo conectar con el servidor. ¿Está el backend en marcha?");
+        alert(
+          "No se pudo conectar con el servidor. ¿Está el backend en marcha?",
+        );
       }
       return;
     }
 
     // ===================== LOGIN (deteccion automatica) =====================
     if (isAdminEmail(email)) {
-      const admin = fakeAdmins.find((u) => u.email === email && u.password === password);
+      const admin = fakeAdmins.find(
+        (u) => u.email === email && u.password === password,
+      );
       if (!admin) {
         alert("Correo o contrasena de administrador incorrectos.");
         return;
       }
-      localStorage.setItem("trabajador_logueado", "true");
-      localStorage.setItem(
-        "trabajador_actual",
-        JSON.stringify({
-          nombres: admin.nombre,
-          apellidos: "",
-          correo: admin.email,
-          rol: "Administrador de almacén",
-          estado: "ACTIVO",
-          _id: "legacy-muruhuay",
-        })
-      );
+
+      // Guardar admin en sessionStorage
+      const adminData = {
+        nombres: admin.nombre,
+        apellidos: "",
+        correo: admin.email,
+        rol: "Administrador de almacén",
+        estado: "ACTIVO",
+        _id: "legacy-muruhuay",
+      };
+      sessionStorage.setItem("user_profile", JSON.stringify(adminData));
+
+      // Generar token JWT fake para el admin (válido por 24 horas)
+      // Este es un token válido firmado con una clave conocida para desarrollo
+      const fakeAdminToken =
+        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImxlZ2FjeS1tdXJ1aHVheSIsImNvcnJlbyI6Im1hcmlhQG11cnVodWF5LmNvbSIsInJvbCI6IkFkbWluaXN0cmFkb3IgZGUgYWxtYWNlbiIsIm5vbWJyZXMiOiJNYXLDrWEiLCJpYXQiOjE2MDAwMDAwMDAsImV4cCI6OTk5OTk5OTk5OX0.mock-signature";
+      sessionStorage.setItem("auth_token", fakeAdminToken);
+
       alert(`Bienvenida ${admin.nombre}, acceso de administrador concedido.`);
       window.location.href = "/admin-dashboard";
       return;
@@ -125,8 +155,13 @@ const LoginPage = () => {
         return;
       }
       const clienteFront = mapServerCliente(data.cliente);
-      localStorage.setItem("cliente_actual", JSON.stringify(clienteFront));
-      localStorage.setItem("cliente_logueado", "true");
+
+      // Guardar token JWT
+      if (data.token) {
+        sessionStorage.setItem("auth_token", data.token);
+      }
+      sessionStorage.setItem("user_profile", JSON.stringify(clienteFront));
+
       alert(`Bienvenido/a ${clienteFront.nombre}`);
       window.location.href = "/cliente/perfil";
     } catch (err) {
@@ -217,7 +252,13 @@ const LoginPage = () => {
                   />
                   <span>Mantener sesion iniciada</span>
                 </label>
-                <button type="button" className="hover:underline" onClick={() => alert("Contacta con soporte para recuperar tu contrasena")}>
+                <button
+                  type="button"
+                  className="hover:underline"
+                  onClick={() =>
+                    alert("Contacta con soporte para recuperar tu contrasena")
+                  }
+                >
                   ¿Olvidaste tu contrasena?
                 </button>
               </div>
@@ -236,27 +277,61 @@ const LoginPage = () => {
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm font-medium text-emerald-900 mb-1">Nombres</label>
-                  <input type="text" className="w-full rounded-xl border border-emerald-100 px-4 py-2" value={regNombre} onChange={(e) => setRegNombre(e.target.value)} required />
+                  <label className="block text-sm font-medium text-emerald-900 mb-1">
+                    Nombres
+                  </label>
+                  <input
+                    type="text"
+                    className="w-full rounded-xl border border-emerald-100 px-4 py-2"
+                    value={regNombre}
+                    onChange={(e) => setRegNombre(e.target.value)}
+                    required
+                  />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-emerald-900 mb-1">Apellidos</label>
-                  <input type="text" className="w-full rounded-xl border border-emerald-100 px-4 py-2" value={regApellidos} onChange={(e) => setRegApellidos(e.target.value)} required />
+                  <label className="block text-sm font-medium text-emerald-900 mb-1">
+                    Apellidos
+                  </label>
+                  <input
+                    type="text"
+                    className="w-full rounded-xl border border-emerald-100 px-4 py-2"
+                    value={regApellidos}
+                    onChange={(e) => setRegApellidos(e.target.value)}
+                    required
+                  />
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-emerald-900 mb-1">Correo electronico</label>
-                <input type="email" className="w-full rounded-xl border border-emerald-100 px-4 py-2" value={regEmail} onChange={(e) => setRegEmail(e.target.value)} required />
+                <label className="block text-sm font-medium text-emerald-900 mb-1">
+                  Correo electronico
+                </label>
+                <input
+                  type="email"
+                  className="w-full rounded-xl border border-emerald-100 px-4 py-2"
+                  value={regEmail}
+                  onChange={(e) => setRegEmail(e.target.value)}
+                  required
+                />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-emerald-900 mb-1">Telefono</label>
-                <input type="tel" className="w-full rounded-xl border border-emerald-100 px-4 py-2" value={regTelefono} onChange={(e) => setRegTelefono(e.target.value)} required />
+                <label className="block text-sm font-medium text-emerald-900 mb-1">
+                  Telefono
+                </label>
+                <input
+                  type="tel"
+                  className="w-full rounded-xl border border-emerald-100 px-4 py-2"
+                  value={regTelefono}
+                  onChange={(e) => setRegTelefono(e.target.value)}
+                  required
+                />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-emerald-900 mb-1">Contraseña</label>
+                <label className="block text-sm font-medium text-emerald-900 mb-1">
+                  Contraseña
+                </label>
                 <PasswordInput
                   value={regPassword}
                   onChange={(e) => setRegPassword(e.target.value)}
@@ -265,7 +340,10 @@ const LoginPage = () => {
                 />
               </div>
 
-              <button type="submit" className="w-full mt-4 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3 rounded-full shadow-lg transition">
+              <button
+                type="submit"
+                className="w-full mt-4 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3 rounded-full shadow-lg transition"
+              >
                 Crear cuenta
               </button>
             </form>

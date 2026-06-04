@@ -3,13 +3,39 @@ import React, { useEffect, useState, useCallback } from "react";
 const API_TAREAS = "http://localhost:5000/api/tareas";
 const API_EMPLEADOS = "http://localhost:5000/api/empleados";
 
+const getAuthToken = () => {
+  return sessionStorage.getItem("auth_token");
+};
+
+const fetchWithAuth = async (url, options = {}) => {
+  const token = getAuthToken();
+  const headers = {
+    "Content-Type": "application/json",
+    ...options.headers,
+  };
+
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  return fetch(url, {
+    ...options,
+    headers,
+  });
+};
+
 const nombreEmpleado = (e) =>
-  [e?.nombres, e?.apellidos].filter(Boolean).join(" ").trim() || e?.correo || "—";
+  [e?.nombres, e?.apellidos].filter(Boolean).join(" ").trim() ||
+  e?.correo ||
+  "—";
 
 const fmtFecha = (d) => {
   if (!d) return "—";
   try {
-    return new Date(d).toLocaleString("es-PE", { dateStyle: "short", timeStyle: "short" });
+    return new Date(d).toLocaleString("es-PE", {
+      dateStyle: "short",
+      timeStyle: "short",
+    });
   } catch {
     return "—";
   }
@@ -34,7 +60,10 @@ const GestionTareas = () => {
   const cargar = useCallback(async () => {
     setLoading(true);
     try {
-      const [rT, rE] = await Promise.all([fetch(API_TAREAS), fetch(API_EMPLEADOS)]);
+      const [rT, rE] = await Promise.all([
+        fetchWithAuth(API_TAREAS),
+        fetchWithAuth(API_EMPLEADOS),
+      ]);
       if (rT.ok) setTareas(await rT.json());
       else setTareas([]);
       if (rE.ok) setEmpleados(await rE.json());
@@ -65,7 +94,7 @@ const GestionTareas = () => {
     }
     setSaving(true);
     try {
-      const res = await fetch(API_TAREAS, {
+      const res = await fetchWithAuth(API_TAREAS, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -109,7 +138,7 @@ const GestionTareas = () => {
     }
     setSaving(true);
     try {
-      const res = await fetch(`${API_TAREAS}/${editingId}`, {
+      const res = await fetchWithAuth(`${API_TAREAS}/${editingId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -137,7 +166,9 @@ const GestionTareas = () => {
   const eliminar = async (id) => {
     if (!window.confirm("¿Eliminar esta tarea?")) return;
     try {
-      const res = await fetch(`${API_TAREAS}/${id}`, { method: "DELETE" });
+      const res = await fetchWithAuth(`${API_TAREAS}/${id}`, {
+        method: "DELETE",
+      });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         alert(data.message || "No se pudo eliminar.");
@@ -150,19 +181,25 @@ const GestionTareas = () => {
     }
   };
 
-  const empleadosActivos = empleados.filter((e) => String(e.estado || "").toUpperCase() === "ACTIVO");
+  const empleadosActivos = empleados.filter(
+    (e) => String(e.estado || "").toUpperCase() === "ACTIVO",
+  );
 
   return (
     <section className="flex-1 space-y-6 overflow-y-auto p-8">
       <div className="rounded-3xl border border-lime-200 bg-white p-6 shadow-sm">
-        <h2 className="text-lg font-bold text-emerald-900">Asignar nueva tarea</h2>
+        <h2 className="text-lg font-bold text-emerald-900">
+          Asignar nueva tarea
+        </h2>
         <p className="mt-1 text-sm text-gray-600">
-          Selecciona el empleado, define el título y opcionalmente los detalles. El trabajador la verá en{" "}
-          <strong>Tareas asignadas</strong>.
+          Selecciona el empleado, define el título y opcionalmente los detalles.
+          El trabajador la verá en <strong>Tareas asignadas</strong>.
         </p>
         <form onSubmit={handleCrear} className="mt-4 grid gap-4 sm:grid-cols-2">
           <div className="sm:col-span-1">
-            <label className="block text-xs font-bold text-gray-600 mb-1">Empleado</label>
+            <label className="block text-xs font-bold text-gray-600 mb-1">
+              Empleado
+            </label>
             <select
               name="empleadoAsignado"
               className="w-full rounded-xl border border-gray-200 p-2.5 text-sm outline-none focus:ring-2 focus:ring-emerald-400"
@@ -179,7 +216,9 @@ const GestionTareas = () => {
             </select>
           </div>
           <div className="sm:col-span-1">
-            <label className="block text-xs font-bold text-gray-600 mb-1">Título</label>
+            <label className="block text-xs font-bold text-gray-600 mb-1">
+              Título
+            </label>
             <input
               name="titulo"
               className="w-full rounded-xl border border-gray-200 p-2.5 text-sm outline-none focus:ring-2 focus:ring-emerald-400"
@@ -190,7 +229,9 @@ const GestionTareas = () => {
             />
           </div>
           <div className="sm:col-span-2">
-            <label className="block text-xs font-bold text-gray-600 mb-1">Descripción (opcional)</label>
+            <label className="block text-xs font-bold text-gray-600 mb-1">
+              Descripción (opcional)
+            </label>
             <textarea
               name="descripcion"
               rows={3}
@@ -214,7 +255,9 @@ const GestionTareas = () => {
 
       <div className="rounded-3xl border border-lime-200 bg-white p-6 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-lg font-bold text-emerald-900">Tareas registradas</h2>
+          <h2 className="text-lg font-bold text-emerald-900">
+            Tareas registradas
+          </h2>
           <button
             type="button"
             onClick={() => cargar()}
@@ -239,23 +282,35 @@ const GestionTareas = () => {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={5} className="px-3 py-8 text-center text-gray-400">
+                  <td
+                    colSpan={5}
+                    className="px-3 py-8 text-center text-gray-400"
+                  >
                     Cargando…
                   </td>
                 </tr>
               ) : tareas.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-3 py-8 text-center text-gray-400">
+                  <td
+                    colSpan={5}
+                    className="px-3 py-8 text-center text-gray-400"
+                  >
                     Aún no hay tareas. Crea la primera arriba.
                   </td>
                 </tr>
               ) : (
                 tareas.map((t) => {
                   const emp = t.empleadoAsignado;
-                  const nombre = emp && typeof emp === "object" ? nombreEmpleado(emp) : "—";
+                  const nombre =
+                    emp && typeof emp === "object" ? nombreEmpleado(emp) : "—";
                   return (
-                    <tr key={t._id} className="border-t border-gray-100 hover:bg-lime-50/50">
-                      <td className="px-3 py-2 font-medium text-gray-900">{t.titulo}</td>
+                    <tr
+                      key={t._id}
+                      className="border-t border-gray-100 hover:bg-lime-50/50"
+                    >
+                      <td className="px-3 py-2 font-medium text-gray-900">
+                        {t.titulo}
+                      </td>
                       <td className="px-3 py-2 text-gray-600">{nombre}</td>
                       <td className="px-3 py-2">
                         <span
@@ -265,10 +320,14 @@ const GestionTareas = () => {
                               : "bg-amber-100 text-amber-900"
                           }`}
                         >
-                          {t.estado === "completada" ? "Completada" : "Pendiente"}
+                          {t.estado === "completada"
+                            ? "Completada"
+                            : "Pendiente"}
                         </span>
                       </td>
-                      <td className="px-3 py-2 text-xs text-gray-500">{fmtFecha(t.fechaCreacion)}</td>
+                      <td className="px-3 py-2 text-xs text-gray-500">
+                        {fmtFecha(t.fechaCreacion)}
+                      </td>
                       <td className="px-3 py-2 text-right">
                         <button
                           type="button"
@@ -300,46 +359,67 @@ const GestionTareas = () => {
             <h3 className="text-lg font-bold text-emerald-900">Editar tarea</h3>
             <form onSubmit={handleGuardarEdicion} className="mt-4 space-y-4">
               <div>
-                <label className="block text-xs font-bold text-gray-600 mb-1">Empleado</label>
+                <label className="block text-xs font-bold text-gray-600 mb-1">
+                  Empleado
+                </label>
                 <select
                   name="empleadoAsignado"
                   className="w-full rounded-xl border border-gray-200 p-2.5 text-sm outline-none focus:ring-2 focus:ring-emerald-400"
                   value={editForm.empleadoAsignado}
-                  onChange={(e) => setEditForm((p) => ({ ...p, empleadoAsignado: e.target.value }))}
+                  onChange={(e) =>
+                    setEditForm((p) => ({
+                      ...p,
+                      empleadoAsignado: e.target.value,
+                    }))
+                  }
                   required
                 >
                   {empleados.map((emp) => (
                     <option key={emp._id} value={emp._id}>
                       {nombreEmpleado(emp)} ({emp.rol})
-                      {String(emp.estado || "").toUpperCase() !== "ACTIVO" ? " — inactivo" : ""}
+                      {String(emp.estado || "").toUpperCase() !== "ACTIVO"
+                        ? " — inactivo"
+                        : ""}
                     </option>
                   ))}
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-bold text-gray-600 mb-1">Título</label>
+                <label className="block text-xs font-bold text-gray-600 mb-1">
+                  Título
+                </label>
                 <input
                   className="w-full rounded-xl border border-gray-200 p-2.5 text-sm outline-none focus:ring-2 focus:ring-emerald-400"
                   value={editForm.titulo}
-                  onChange={(e) => setEditForm((p) => ({ ...p, titulo: e.target.value }))}
+                  onChange={(e) =>
+                    setEditForm((p) => ({ ...p, titulo: e.target.value }))
+                  }
                   required
                 />
               </div>
               <div>
-                <label className="block text-xs font-bold text-gray-600 mb-1">Descripción</label>
+                <label className="block text-xs font-bold text-gray-600 mb-1">
+                  Descripción
+                </label>
                 <textarea
                   rows={3}
                   className="w-full rounded-xl border border-gray-200 p-2.5 text-sm outline-none focus:ring-2 focus:ring-emerald-400"
                   value={editForm.descripcion}
-                  onChange={(e) => setEditForm((p) => ({ ...p, descripcion: e.target.value }))}
+                  onChange={(e) =>
+                    setEditForm((p) => ({ ...p, descripcion: e.target.value }))
+                  }
                 />
               </div>
               <div>
-                <label className="block text-xs font-bold text-gray-600 mb-1">Estado</label>
+                <label className="block text-xs font-bold text-gray-600 mb-1">
+                  Estado
+                </label>
                 <select
                   className="w-full rounded-xl border border-gray-200 p-2.5 text-sm outline-none focus:ring-2 focus:ring-emerald-400"
                   value={editForm.estado}
-                  onChange={(e) => setEditForm((p) => ({ ...p, estado: e.target.value }))}
+                  onChange={(e) =>
+                    setEditForm((p) => ({ ...p, estado: e.target.value }))
+                  }
                 >
                   <option value="pendiente">Pendiente</option>
                   <option value="completada">Completada</option>
