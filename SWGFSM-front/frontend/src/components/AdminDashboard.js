@@ -12,6 +12,7 @@ import PrediccionChartsPanel, {
 } from "../predict/PrediccionCharts";
 import PasswordInput from "./PasswordInput";
 import { nombreLineaVenta } from "../utils/tiendaProducto";
+import { Toaster, toast } from "sonner";
 
 const API_URL_PRODUCTOS = "http://localhost:5000/api/producto";
 const API_URL_INVENTARIO = "http://localhost:5000/api/inventario";
@@ -810,7 +811,8 @@ const AdminDashboard = () => {
         });
         setModoEditarInventario(false);
         setInventarioEditId(null);
-        alert("Registro guardado.");
+        toast.success("Registro guardado")
+        //alert("Registro guardado")
       } else {
         let msg = "Error al guardar inventario.";
         try {
@@ -846,30 +848,35 @@ const AdminDashboard = () => {
     setShowRegistroInventarioModal(true);
   };
 
-  const eliminarInventario = async (inv) => {
-    if (!inv?._id) return;
-    if (
-      !window.confirm(
-        "¿Eliminar este registro de inventario? Esta acción no se puede deshacer.",
-      )
-    )
-      return;
-    try {
-      const res = await fetchWithAuth(`${API_URL_INVENTARIO}/${inv._id}`, {
-        method: "DELETE",
-      });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok) {
-        fetchInventario();
-        alert("Registro eliminado.");
-      } else {
-        alert(data?.message || "No se pudo eliminar el registro.");
+  const eliminarInventario = async (inv) => { //FLUJO PARA ELIMINAR USANDO TOAST, IMPLEMENTAR EN OTROS MÓDULOS
+  if (!inv?._id) return;
+  toast.warning("¿Eliminar este registro de inventario? Esta acción no se puede deshacer.", {
+    cancel: {
+      label: 'Cancelar',
+      onClick: () => toast.dismiss()
+    },
+    action: {
+      label: 'Aceptar',
+      onClick: async () => {
+        try {
+          const res = await fetchWithAuth(`${API_URL_INVENTARIO}/${inv._id}`, {
+            method: "DELETE",
+          });
+          const data = await res.json().catch(() => ({}));
+          if (res.ok) {
+            fetchInventario();
+            toast.success("Registro eliminado");
+          } else {
+            toast.error(data.message || 'No se pudo eliminar el registro');
+          }
+        } catch (e) {
+          console.error(e);
+          toast.error('Error de conexión al eliminar');
+        }
       }
-    } catch (e) {
-      console.error(e);
-      alert("Error de conexión al eliminar.");
     }
-  };
+  });
+};
 
   const handleBack = () => {
     if (window.opener) window.close();
@@ -2243,6 +2250,7 @@ const AdminDashboard = () => {
           )}
         </div>
 
+        <Toaster position="bottom-center" richColors success/>
         <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
           {menuSectionKeys.map((sec) => (
             <button
