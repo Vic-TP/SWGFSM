@@ -105,7 +105,7 @@ const ProveedoresTable = () => {
         ? `${API_URL_PROVEEDORES}/${editId}`
         : API_URL_PROVEEDORES;
       const method = modoEditar ? "PUT" : "POST";
-      const res = await fetch(url, {
+      const res = await fetchWithAuth(url, {
         method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -142,7 +142,7 @@ const ProveedoresTable = () => {
     if (!ok) return;
 
     try {
-      const res = await fetch(`${API_URL_PROVEEDORES}/${id}`, {
+      const res = await fetchWithAuth(`${API_URL_PROVEEDORES}/${id}`, {
         method: "DELETE",
       });
       const data = await res.json().catch(() => ({}));

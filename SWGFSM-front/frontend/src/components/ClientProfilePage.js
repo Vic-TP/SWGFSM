@@ -21,6 +21,27 @@ const mapServerCliente = (doc) => {
     estado: doc.estado,
   };
 };
+//ESTO PODRÍA REDUCIRSE EN UN SOLO BLOQUE DE CODIGO COMPARTIDO, CORREGIR EN ULTIMA ITERACIÓN
+const getAuthToken = () => {
+  return sessionStorage.getItem("auth_token");
+};
+
+const fetchWithAuth = async (url, options = {}) => {
+  const token = getAuthToken();
+  const headers = {
+    "Content-Type": "application/json",
+    ...options.headers,
+  };
+
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  return fetch(url, {
+    ...options,
+    headers,
+  });
+};
 
 const formatDate = (isoString) => {
   try {
@@ -169,7 +190,7 @@ const ClientProfilePage = () => {
   const fetchClientOrders = async (email) => {
     try {
       // Obtener todas las ventas del cliente por email
-      const response = await fetch(`${API_URL_VENTAS}?clienteEmail=${email}`);
+      const response = await fetchWithAuth(`${API_URL_VENTAS}?clienteEmail=${email}`);
       if (response.ok) {
         const data = await response.json();
         const merged = fusionarEntregaDesdeLocal(data, email);
@@ -233,7 +254,7 @@ const ClientProfilePage = () => {
       return;
     }
     try {
-      const res = await fetch(`${API_URL_CLIENTES}/${client._id}`, {
+      const res = await fetchWithAuth(`${API_URL_CLIENTES}/${client._id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

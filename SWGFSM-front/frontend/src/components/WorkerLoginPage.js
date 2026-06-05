@@ -23,7 +23,7 @@ const WorkerLoginPage = () => {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        toast.error("No se pudo iniciar sesión.");
+        toast.error(data.message || "Correo o contraseña incorrectos.");
         return;
       }
       if (data.empleado) {

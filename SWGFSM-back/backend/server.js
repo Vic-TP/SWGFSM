@@ -50,8 +50,8 @@ const entregaRoutes = require("./routes/entregaRoutes");
 const verifyJWT = require("./middleware/verifyJWT"); // Middleware para proteger rutas
 
 // --- Definición de Endpoints ---
-app.use("/api/clientes", clienteRoutes);
-app.use("/api/empleados", empleadoRoutes);
+app.use("/api/clientes", clienteRoutes); //CORREGIR
+app.use("/api/empleados", empleadoRoutes); //CORREGIR
 app.use("/api/producto", productoRoutes); //PARA PODER VER EL PRODUCTO DESDE EL LANDING PAGE
 app.use("/api/inventario", verifyJWT, inventarioRoutes);
 app.use("/api/ventas", verifyJWT, ventasRoutes);

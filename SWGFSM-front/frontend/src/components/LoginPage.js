@@ -158,7 +158,7 @@ const LoginPage = () => {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        toast.error(data.message || "Correo o contraseña incorrectos.");
+        toast.error(data.message || "Correo o contraseña incorrectos."); 
         return;
       }
       const clienteFront = mapServerCliente(data.cliente);
