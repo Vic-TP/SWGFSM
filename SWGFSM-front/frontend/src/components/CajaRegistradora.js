@@ -1,12 +1,39 @@
 // src/components/CajaRegistradora.js — Carrito de ventas con validación de stock y totales en tiempo real
 
-import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import React, {
+  useState,
+  useEffect,
+  useMemo,
+  useCallback,
+  useRef,
+} from "react";
 import { tipoProductoLabel } from "../utils/tiendaProducto";
 
 const API_URL_PRODUCTOS = "http://localhost:5000/api/producto";
 const API_URL_VENTAS = "http://localhost:5000/api/ventas";
 const API_URL_CLIENTES = "http://localhost:5000/api/clientes";
 const BUSQUEDA_DEBOUNCE_MS = 280;
+
+const getAuthToken = () => {
+  return sessionStorage.getItem("auth_token");
+};
+
+const fetchWithAuth = async (url, options = {}) => {
+  const token = getAuthToken();
+  const headers = {
+    "Content-Type": "application/json",
+    ...options.headers,
+  };
+
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  return fetch(url, {
+    ...options,
+    headers,
+  });
+};
 
 const normText = (v) =>
   String(v || "")
@@ -20,7 +47,8 @@ const nombreCompletoCliente = (c) =>
 
 const idProducto = (v) => {
   if (v == null) return "";
-  if (typeof v === "object" && typeof v.toString === "function") return String(v.toString());
+  if (typeof v === "object" && typeof v.toString === "function")
+    return String(v.toString());
   return String(v);
 };
 
@@ -59,9 +87,12 @@ const stockKgPorMadurez = (producto, madurez) => {
   const k = String(madurez || "")
     .trim()
     .toLowerCase();
-  if (k === "maduro") return Math.max(0, Math.floor(precioNum(producto.stockPaltaMadura)));
-  if (k === "verde") return Math.max(0, Math.floor(precioNum(producto.stockPaltaVerde)));
-  if (k === "sazon") return Math.max(0, Math.floor(precioNum(producto.stockPaltaSazon)));
+  if (k === "maduro")
+    return Math.max(0, Math.floor(precioNum(producto.stockPaltaMadura)));
+  if (k === "verde")
+    return Math.max(0, Math.floor(precioNum(producto.stockPaltaVerde)));
+  if (k === "sazon")
+    return Math.max(0, Math.floor(precioNum(producto.stockPaltaSazon)));
   return stockDisponible(producto);
 };
 
@@ -79,7 +110,8 @@ const kgTotalesCarritoItem = (item) => {
   return Math.max(0, Math.floor(precioNum(item.cantidad) || 0));
 };
 
-const montoLinea = (item) => precioNum(item.precioUnitario) * kgTotalesCarritoItem(item);
+const montoLinea = (item) =>
+  precioNum(item.precioUnitario) * kgTotalesCarritoItem(item);
 
 const formatoKgPorMadurez = () => ({ verde: 0, sazon: 0, maduro: 0 });
 
@@ -90,9 +122,18 @@ const clampKgPorMadurez = (producto, raw) => {
   mx.sazon = stockKgPorMadurez(producto, "sazon");
   mx.maduro = stockKgPorMadurez(producto, "maduro");
   return {
-    verde: Math.min(Math.max(0, Math.floor(precioNum(raw?.verde) || 0)), mx.verde),
-    sazon: Math.min(Math.max(0, Math.floor(precioNum(raw?.sazon) || 0)), mx.sazon),
-    maduro: Math.min(Math.max(0, Math.floor(precioNum(raw?.maduro) || 0)), mx.maduro),
+    verde: Math.min(
+      Math.max(0, Math.floor(precioNum(raw?.verde) || 0)),
+      mx.verde,
+    ),
+    sazon: Math.min(
+      Math.max(0, Math.floor(precioNum(raw?.sazon) || 0)),
+      mx.sazon,
+    ),
+    maduro: Math.min(
+      Math.max(0, Math.floor(precioNum(raw?.maduro) || 0)),
+      mx.maduro,
+    ),
   };
 };
 
@@ -148,7 +189,9 @@ const BucketKgInput = ({ value, maxKg, label, ariaLabel, onCommit }) => {
           }}
           className="w-16 text-center font-semibold border border-gray-300 rounded-lg py-1 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400/60"
         />
-        <span className="text-[10px] text-amber-800 font-medium whitespace-nowrap">máx. {maxOk}</span>
+        <span className="text-[10px] text-amber-800 font-medium whitespace-nowrap">
+          máx. {maxOk}
+        </span>
       </div>
     </div>
   );
@@ -156,7 +199,9 @@ const BucketKgInput = ({ value, maxKg, label, ariaLabel, onCommit }) => {
 
 /** Cantidad (kg) editable: escribe el valor y confirma con Enter o al salir del campo. */
 const CartQtyField = ({ value, maxPermitido, onCommit }) => {
-  const [draft, setDraft] = useState(String(Math.max(1, Math.floor(precioNum(value) || 1))));
+  const [draft, setDraft] = useState(
+    String(Math.max(1, Math.floor(precioNum(value) || 1))),
+  );
   useEffect(() => {
     setDraft(String(Math.max(1, Math.floor(precioNum(value) || 1))));
   }, [value]);
@@ -200,7 +245,12 @@ const CajaRegistradora = ({ onVentaCompletada }) => {
   const [productosFiltrados, setProductosFiltrados] = useState([]);
   const [buscandoSugerencias, setBuscandoSugerencias] = useState(false);
   const [buscadorEnfocado, setBuscadorEnfocado] = useState(false);
-  const [cliente, setCliente] = useState({ nombre: "", email: "", telefono: "", documento: "" });
+  const [cliente, setCliente] = useState({
+    nombre: "",
+    email: "",
+    telefono: "",
+    documento: "",
+  });
   const [clientesIndex, setClientesIndex] = useState([]);
   const [clienteSugerencias, setClienteSugerencias] = useState([]);
   const [clienteRegistrado, setClienteRegistrado] = useState(null);
@@ -217,14 +267,21 @@ const CajaRegistradora = ({ onVentaCompletada }) => {
     let cancel = false;
     (async () => {
       try {
-        const res = await fetch(API_URL_CLIENTES);
+        const res = await fetchWithAuth(API_URL_CLIENTES);
         const data = await res.json().catch(() => []);
-        if (!res.ok) throw new Error(data?.message || `Error al cargar clientes (${res.status})`);
+        if (!res.ok)
+          throw new Error(
+            data?.message || `Error al cargar clientes (${res.status})`,
+          );
         const list = Array.isArray(data) ? data : [];
         const indexed = list
-          .filter((c) => String(c?.estado || "ACTIVO").toUpperCase() === "ACTIVO")
+          .filter(
+            (c) => String(c?.estado || "ACTIVO").toUpperCase() === "ACTIVO",
+          )
           .map((c) => {
-            const correo = String(c?.correo || "").trim().toLowerCase();
+            const correo = String(c?.correo || "")
+              .trim()
+              .toLowerCase();
             const tel = String(c?.telefono || "").trim();
             const full = nombreCompletoCliente(c);
             return {
@@ -255,7 +312,8 @@ const CajaRegistradora = ({ onVentaCompletada }) => {
   useEffect(() => {
     const onStock = () => fetchProductos();
     window.addEventListener("swgfsm-stock-actualizado", onStock);
-    return () => window.removeEventListener("swgfsm-stock-actualizado", onStock);
+    return () =>
+      window.removeEventListener("swgfsm-stock-actualizado", onStock);
   }, []);
 
   useEffect(() => {
@@ -270,9 +328,9 @@ const CajaRegistradora = ({ onVentaCompletada }) => {
     setBuscandoSugerencias(true);
     const t = setTimeout(async () => {
       try {
-        const res = await fetch(
+        const res = await fetchWithAuth(
           `${API_URL_PRODUCTOS}/buscar?q=${encodeURIComponent(q)}`,
-          { signal: controller.signal }
+          { signal: controller.signal },
         );
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
@@ -296,7 +354,7 @@ const CajaRegistradora = ({ onVentaCompletada }) => {
 
   const fetchProductos = async () => {
     try {
-      const res = await fetch(API_URL_PRODUCTOS);
+      const res = await fetchWithAuth(API_URL_PRODUCTOS);
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}`);
       }
@@ -317,22 +375,27 @@ const CajaRegistradora = ({ onVentaCompletada }) => {
     return m;
   }, [productos]);
 
-
-
   /** Cuando cambia el catálogo (p. ej. venta previa): recalculo precios y límites de kg */
   useEffect(() => {
     if (!productos.length) return;
     setCarrito((prev) => {
       const next = [];
       for (let row of prev) {
-        const p = productos.find((x) => idProducto(x._id) === idProducto(row.productoId));
+        const p = productos.find(
+          (x) => idProducto(x._id) === idProducto(row.productoId),
+        );
         if (!p) {
           next.push(row);
           continue;
         }
         row = convertirItemLegadoABuckets({ ...row }, p);
         const unit = precioVentaDe(p);
-        const medida = row.medida != null ? String(row.medida) : (p.unidadMedida ? String(p.unidadMedida) : "—");
+        const medida =
+          row.medida != null
+            ? String(row.medida)
+            : p.unidadMedida
+              ? String(p.unidadMedida)
+              : "—";
         const tipo = tipoProductoLabel(p);
         if (usaBucketsPalta(p)) {
           const totalInv = stockDisponible(p);
@@ -367,7 +430,9 @@ const CajaRegistradora = ({ onVentaCompletada }) => {
       }
       const same =
         prev.length === next.length &&
-        prev.every((oldR, idx) => JSON.stringify(oldR) === JSON.stringify(next[idx]));
+        prev.every(
+          (oldR, idx) => JSON.stringify(oldR) === JSON.stringify(next[idx]),
+        );
       return same ? prev : next;
     });
   }, [productos]);
@@ -381,7 +446,9 @@ const CajaRegistradora = ({ onVentaCompletada }) => {
       const pid = idProducto(producto._id);
       const unit = precioVentaDe(producto);
       if (unit <= 0) {
-        window.alert(`Precio de venta inválido para "${producto.nombre}". Revise el producto en el catálogo.`);
+        window.alert(
+          `Precio de venta inválido para "${producto.nombre}". Revise el producto en el catálogo.`,
+        );
         return;
       }
       if (stockDisponible(producto) <= 0) {
@@ -390,7 +457,9 @@ const CajaRegistradora = ({ onVentaCompletada }) => {
       }
 
       setCarrito((prev) => {
-        const medida = producto.unidadMedida ? String(producto.unidadMedida) : "—";
+        const medida = producto.unidadMedida
+          ? String(producto.unidadMedida)
+          : "—";
         const tipo = tipoProductoLabel(producto);
         const maxTot = stockDisponible(producto);
 
@@ -399,13 +468,13 @@ const CajaRegistradora = ({ onVentaCompletada }) => {
             (i) =>
               idProducto(i.productoId) === pid &&
               i.kgPorMadurez != null &&
-              typeof i.kgPorMadurez === "object"
+              typeof i.kgPorMadurez === "object",
           );
           if (existe) {
             queueMicrotask(() =>
               window.alert(
-                `«${producto.nombre}» ya está en el carrito. Indica kg de Verde, Sazón y Maduro en esa tarjeta.`
-              )
+                `«${producto.nombre}» ya está en el carrito. Indica kg de Verde, Sazón y Maduro en esa tarjeta.`,
+              ),
             );
             return prev;
           }
@@ -425,7 +494,7 @@ const CajaRegistradora = ({ onVentaCompletada }) => {
         const idxLeg = prev.findIndex(
           (i) =>
             idProducto(i.productoId) === pid &&
-            !(i.kgPorMadurez != null && typeof i.kgPorMadurez === "object")
+            !(i.kgPorMadurez != null && typeof i.kgPorMadurez === "object"),
         );
         if (idxLeg >= 0) {
           const actual = prev[idxLeg];
@@ -433,12 +502,14 @@ const CajaRegistradora = ({ onVentaCompletada }) => {
           const deseado = cur + 1;
           const fin = Math.min(deseado, maxTot);
           if (deseado > maxTot) {
-            window.alert(`Stock insuficiente para "${producto.nombre}". Máximo: ${maxTot} kg.`);
+            window.alert(
+              `Stock insuficiente para "${producto.nombre}". Máximo: ${maxTot} kg.`,
+            );
           }
           return prev.map((row, i) =>
             i === idxLeg
               ? { ...row, precioUnitario: unit, tipo, medida, cantidad: fin }
-              : row
+              : row,
           );
         }
         return [
@@ -456,7 +527,7 @@ const CajaRegistradora = ({ onVentaCompletada }) => {
       setSearchTerm("");
       setProductosFiltrados(productos);
     },
-    [productos]
+    [productos],
   );
 
   const actualizarKgBucket = useCallback(
@@ -468,10 +539,10 @@ const CajaRegistradora = ({ onVentaCompletada }) => {
           if (!p) return row;
           const kg = { ...row.kgPorMadurez, [campo]: valor };
           return { ...row, kgPorMadurez: clampKgPorMadurez(p, kg) };
-        })
+        }),
       );
     },
-    [productoPorId]
+    [productoPorId],
   );
 
   const actualizarCantidad = useCallback(
@@ -483,26 +554,34 @@ const CajaRegistradora = ({ onVentaCompletada }) => {
       }
       setCarrito((prev) => {
         const item = prev[index];
-        if (!item || (item.kgPorMadurez != null && typeof item.kgPorMadurez === "object")) return prev;
+        if (
+          !item ||
+          (item.kgPorMadurez != null && typeof item.kgPorMadurez === "object")
+        )
+          return prev;
         const p = productoPorId.get(idProducto(item.productoId));
         const max = p ? stockDisponible(p) : 0;
         if (max <= 0) {
-          window.alert(`Sin stock para "${item.nombre}". Se quitará del carrito.`);
+          window.alert(
+            `Sin stock para "${item.nombre}". Se quitará del carrito.`,
+          );
           return prev.filter((_, i) => i !== index);
         }
         if (entero > max) {
           window.alert(`Cantidad máxima disponible: ${max}.`);
         }
         const final = Math.min(entero, max);
-        return prev.map((row, i) => (i === index ? { ...row, cantidad: final } : row));
+        return prev.map((row, i) =>
+          i === index ? { ...row, cantidad: final } : row,
+        );
       });
     },
-    [eliminarDelCarrito, productoPorId]
+    [eliminarDelCarrito, productoPorId],
   );
 
   const total = useMemo(
     () => carrito.reduce((sum, item) => sum + montoLinea(item), 0),
-    [carrito]
+    [carrito],
   );
 
   const validarCarritoAntesDeVender = useCallback(() => {
@@ -545,21 +624,31 @@ const CajaRegistradora = ({ onVentaCompletada }) => {
     const lineas = [];
     for (const item of carrito) {
       const tipoStr =
-        item.tipo != null && String(item.tipo).trim() !== "" ? String(item.tipo).trim() : "";
+        item.tipo != null && String(item.tipo).trim() !== ""
+          ? String(item.tipo).trim()
+          : "";
       const p = productoPorId.get(idProducto(item.productoId));
       const pu = precioNum(item.precioUnitario);
       const medida = item.medida || "—";
       const pid = idProducto(item.productoId);
       const nom = item.nombre;
 
-      if (item.kgPorMadurez != null && typeof item.kgPorMadurez === "object" && p && usaBucketsPalta(p)) {
+      if (
+        item.kgPorMadurez != null &&
+        typeof item.kgPorMadurez === "object" &&
+        p &&
+        usaBucketsPalta(p)
+      ) {
         const specs = [
           ["verde", "verde"],
           ["sazon", "sazon"],
           ["maduro", "maduro"],
         ];
         for (const [key, madurezApi] of specs) {
-          const q = Math.max(0, Math.floor(precioNum(item.kgPorMadurez[key]) || 0));
+          const q = Math.max(
+            0,
+            Math.floor(precioNum(item.kgPorMadurez[key]) || 0),
+          );
           if (q < 1) continue;
           lineas.push({
             productoId: pid,
@@ -620,7 +709,7 @@ const CajaRegistradora = ({ onVentaCompletada }) => {
     };
 
     try {
-      const res = await fetch(API_URL_VENTAS, {
+      const res = await fetchWithAuth(API_URL_VENTAS, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(venta),
@@ -633,11 +722,13 @@ const CajaRegistradora = ({ onVentaCompletada }) => {
       }
       if (!res.ok) {
         throw new Error(
-          data?.message || data?.error || `Error al crear la venta (${res.status})`
+          data?.message ||
+            data?.error ||
+            `Error al crear la venta (${res.status})`,
         );
       }
       try {
-        const cr = await fetch(`${API_URL_CLIENTES}/registro-caja`, {
+        const cr = await fetchWithAuth(`${API_URL_CLIENTES}/registro-caja`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -649,7 +740,10 @@ const CajaRegistradora = ({ onVentaCompletada }) => {
         });
         if (!cr.ok) {
           const err = await cr.json().catch(() => ({}));
-          console.warn("No se guardó el cliente en el catálogo:", err?.message || cr.status);
+          console.warn(
+            "No se guardó el cliente en el catálogo:",
+            err?.message || cr.status,
+          );
         }
       } catch (e) {
         console.warn("Error al registrar cliente en catálogo:", e);
@@ -657,7 +751,7 @@ const CajaRegistradora = ({ onVentaCompletada }) => {
       setVentaActual(data);
       const email = (cliente.email || "").trim();
       const tel = (cliente.telefono || "").trim();
-      const prefer = email ? "email" : (tel ? "whatsapp" : "email");
+      const prefer = email ? "email" : tel ? "whatsapp" : "email";
       setTipoEnvio(prefer);
       setDestinoEnvio(prefer === "email" ? email : tel);
       setMostrarModalEnvio(true);
@@ -674,19 +768,26 @@ const CajaRegistradora = ({ onVentaCompletada }) => {
   // Enviar comprobante
   const enviarComprobante = async () => {
     if (!destinoEnvio) {
-      alert(`Ingresa el ${tipoEnvio === "email" ? "correo" : "número de WhatsApp"}`);
+      alert(
+        `Ingresa el ${tipoEnvio === "email" ? "correo" : "número de WhatsApp"}`,
+      );
       return;
     }
 
     try {
-      const res = await fetch(`${API_URL_VENTAS}/${ventaActual._id}/enviar-comprobante`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tipo: tipoEnvio, destino: destinoEnvio })
-      });
+      const res = await fetchWithAuth(
+        `${API_URL_VENTAS}/${ventaActual._id}/enviar-comprobante`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ tipo: tipoEnvio, destino: destinoEnvio }),
+        },
+      );
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error(data?.message || data?.error || `Error al enviar (${res.status})`);
+        throw new Error(
+          data?.message || data?.error || `Error al enviar (${res.status})`,
+        );
       }
       // Si el servidor no tiene SMTP configurado, no lo tratamos como error:
       // simplemente mostramos/impirmimos la boleta generada.
@@ -698,7 +799,7 @@ const CajaRegistradora = ({ onVentaCompletada }) => {
       if (tipoEnvio === "whatsapp" && data?.whatsappUrl) {
         window.open(data.whatsappUrl, "_blank", "noopener,noreferrer");
       }
-      
+
       // Abrir comprobante en nueva ventana
       if (data?.comprobanteHTML) {
         const ventana = window.open();
@@ -712,10 +813,10 @@ const CajaRegistradora = ({ onVentaCompletada }) => {
       if (tipoEnvio === "email" && data?.sent === false) {
         alert(
           "No se pudo enviar al correo porque el servidor no tiene SMTP configurado. " +
-            "Configura SMTP_HOST/SMTP_PORT/SMTP_USER/SMTP_PASS en el backend y reinicia el servidor."
+            "Configura SMTP_HOST/SMTP_PORT/SMTP_USER/SMTP_PASS en el backend y reinicia el servidor.",
         );
       }
-      
+
       // Resetear todo
       setCarrito([]);
       setCliente({ nombre: "", email: "", telefono: "", documento: "" });
@@ -733,13 +834,17 @@ const CajaRegistradora = ({ onVentaCompletada }) => {
     try {
       if (!ventaActual?._id) throw new Error("No hay venta para imprimir.");
 
-      const res = await fetch(`${API_URL_VENTAS}/${ventaActual._id}/enviar-comprobante`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tipo: "print", destino: "" })
-      });
+      const res = await fetchWithAuth(
+        `${API_URL_VENTAS}/${ventaActual._id}/enviar-comprobante`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ tipo: "print", destino: "" }),
+        },
+      );
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.message || `Error al generar (${res.status})`);
+      if (!res.ok)
+        throw new Error(data?.message || `Error al generar (${res.status})`);
 
       if (data?.comprobanteHTML) {
         const ventana = window.open();
@@ -770,11 +875,16 @@ const CajaRegistradora = ({ onVentaCompletada }) => {
   const anadirMasProductos = useCallback(async () => {
     const lista = await fetchProductos();
     setSearchTerm("");
-    setProductosFiltrados(Array.isArray(lista) && lista.length ? lista : productos);
+    setProductosFiltrados(
+      Array.isArray(lista) && lista.length ? lista : productos,
+    );
     setBuscadorEnfocado(false);
     window.requestAnimationFrame(() => {
       searchInputRef.current?.focus();
-      searchInputRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      searchInputRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
     });
   }, [productos]);
 
@@ -786,7 +896,9 @@ const CajaRegistradora = ({ onVentaCompletada }) => {
           <div className="bg-white rounded-2xl p-5 shadow-sm">
             <div className="relative">
               <div className="flex items-center gap-2 rounded-xl border border-gray-200 px-3 py-2 focus-within:ring-2 focus-within:ring-emerald-400/50 focus-within:border-emerald-300">
-                <span className="text-gray-400 select-none" aria-hidden>🔍</span>
+                <span className="text-gray-400 select-none" aria-hidden>
+                  🔍
+                </span>
                 <input
                   ref={searchInputRef}
                   type="text"
@@ -821,11 +933,17 @@ const CajaRegistradora = ({ onVentaCompletada }) => {
                   role="listbox"
                 >
                   {buscandoSugerencias && (
-                    <li className="px-4 py-3 text-sm text-gray-500">Buscando…</li>
+                    <li className="px-4 py-3 text-sm text-gray-500">
+                      Buscando…
+                    </li>
                   )}
                   {!buscandoSugerencias &&
                     productosFiltrados.map((producto) => (
-                      <li key={producto._id} role="option" aria-selected="false">
+                      <li
+                        key={producto._id}
+                        role="option"
+                        aria-selected="false"
+                      >
                         <button
                           type="button"
                           disabled={stockDisponible(producto) <= 0}
@@ -839,12 +957,20 @@ const CajaRegistradora = ({ onVentaCompletada }) => {
                         >
                           <span className="text-gray-400 mt-0.5">🔍</span>
                           <span className="flex-1 min-w-0 grid grid-cols-[1fr_auto] gap-x-3 gap-y-0.5 text-left">
-                            <span className="font-medium text-gray-900 truncate">{producto.nombre}</span>
-                            <span className="text-sm text-gray-700 shrink-0">{tipoProductoLabel(producto)}</span>
+                            <span className="font-medium text-gray-900 truncate">
+                              {producto.nombre}
+                            </span>
+                            <span className="text-sm text-gray-700 shrink-0">
+                              {tipoProductoLabel(producto)}
+                            </span>
                             <span className="text-sm text-emerald-700 col-span-2">
-                              P. unit.: S/ {formatSoles(precioVentaDe(producto))}
+                              P. unit.: S/{" "}
+                              {formatSoles(precioVentaDe(producto))}
                               <span className="text-gray-400 font-normal ml-2">
-                                · Stock: {stockDisponible(producto)} {producto.unidadMedida ? `· ${producto.unidadMedida}` : ""}
+                                · Stock: {stockDisponible(producto)}{" "}
+                                {producto.unidadMedida
+                                  ? `· ${producto.unidadMedida}`
+                                  : ""}
                               </span>
                             </span>
                           </span>
@@ -879,76 +1005,96 @@ const CajaRegistradora = ({ onVentaCompletada }) => {
             </p>
             <div className="max-h-96 overflow-y-auto rounded-xl border border-gray-200 overflow-hidden">
               {buscandoSugerencias && searchTerm.trim() && (
-                <p className="text-gray-400 text-center py-6 bg-white">Buscando…</p>
+                <p className="text-gray-400 text-center py-6 bg-white">
+                  Buscando…
+                </p>
               )}
-              {!(buscandoSugerencias && searchTerm.trim()) && productosFiltrados.length > 0 && (
-                <table className="w-full text-sm text-left">
-                  <thead className="bg-emerald-900 text-lime-50 sticky top-0 z-10">
-                    <tr>
-                      <th className="px-4 py-3 font-semibold">Producto</th>
-                      <th className="px-4 py-3 font-semibold w-28">Tipo</th>
-                      <th className="px-4 py-3 font-semibold w-28 text-center"> </th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-100">
-                    {productosFiltrados.map((producto) => {
-                      const sinStockTotal = stockDisponible(producto) <= 0;
-                      return (
-                        <tr
-                          key={producto._id}
-                          className={sinStockTotal ? "opacity-50 bg-gray-50" : "hover:bg-emerald-50/60"}
-                        >
-                          <td className="px-4 py-3 align-top">
-                            <span className="font-medium text-gray-900 block">{producto.nombre}</span>
-                            <span className="text-xs text-gray-500 mt-0.5 block">
-                              S/ {formatSoles(precioVentaDe(producto))}
-                              <span className="text-gray-400">
-                                {" "}
-                                · Total: {stockDisponible(producto)}
-                                {usaBucketsPalta(producto) ? (
-                                  <span className="block mt-0.5 text-[11px]">
-                                    Verde {stockKgPorMadurez(producto, "verde")} · Sazón{" "}
-                                    {stockKgPorMadurez(producto, "sazon")} · Maduro{" "}
-                                    {stockKgPorMadurez(producto, "maduro")} kg
-                                  </span>
-                                ) : null}
-                                {producto.unidadMedida ? ` · ${producto.unidadMedida}` : ""}
+              {!(buscandoSugerencias && searchTerm.trim()) &&
+                productosFiltrados.length > 0 && (
+                  <table className="w-full text-sm text-left">
+                    <thead className="bg-emerald-900 text-lime-50 sticky top-0 z-10">
+                      <tr>
+                        <th className="px-4 py-3 font-semibold">Producto</th>
+                        <th className="px-4 py-3 font-semibold w-28">Tipo</th>
+                        <th className="px-4 py-3 font-semibold w-28 text-center">
+                          {" "}
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-100">
+                      {productosFiltrados.map((producto) => {
+                        const sinStockTotal = stockDisponible(producto) <= 0;
+                        return (
+                          <tr
+                            key={producto._id}
+                            className={
+                              sinStockTotal
+                                ? "opacity-50 bg-gray-50"
+                                : "hover:bg-emerald-50/60"
+                            }
+                          >
+                            <td className="px-4 py-3 align-top">
+                              <span className="font-medium text-gray-900 block">
+                                {producto.nombre}
                               </span>
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 align-top text-gray-800 border-l border-gray-100 font-medium">
-                            {tipoProductoLabel(producto)}
-                          </td>
-                          <td className="px-3 py-3 align-middle text-center border-l border-gray-100">
-                            <button
-                              type="button"
-                              disabled={sinStockTotal}
-                              onClick={() => agregarAlCarrito(producto)}
-                              className="rounded-full bg-emerald-600 text-white text-xs font-semibold px-3 py-2 hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed"
-                              title={
-                                usaBucketsPalta(producto)
-                                  ? "Define kg Verdes / Sazón / Maduro en el carrito"
-                                  : ""
-                              }
-                            >
-                              Agregar
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              )}
+                              <span className="text-xs text-gray-500 mt-0.5 block">
+                                S/ {formatSoles(precioVentaDe(producto))}
+                                <span className="text-gray-400">
+                                  {" "}
+                                  · Total: {stockDisponible(producto)}
+                                  {usaBucketsPalta(producto) ? (
+                                    <span className="block mt-0.5 text-[11px]">
+                                      Verde{" "}
+                                      {stockKgPorMadurez(producto, "verde")} ·
+                                      Sazón{" "}
+                                      {stockKgPorMadurez(producto, "sazon")} ·
+                                      Maduro{" "}
+                                      {stockKgPorMadurez(producto, "maduro")} kg
+                                    </span>
+                                  ) : null}
+                                  {producto.unidadMedida
+                                    ? ` · ${producto.unidadMedida}`
+                                    : ""}
+                                </span>
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 align-top text-gray-800 border-l border-gray-100 font-medium">
+                              {tipoProductoLabel(producto)}
+                            </td>
+                            <td className="px-3 py-3 align-middle text-center border-l border-gray-100">
+                              <button
+                                type="button"
+                                disabled={sinStockTotal}
+                                onClick={() => agregarAlCarrito(producto)}
+                                className="rounded-full bg-emerald-600 text-white text-xs font-semibold px-3 py-2 hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                                title={
+                                  usaBucketsPalta(producto)
+                                    ? "Define kg Verdes / Sazón / Maduro en el carrito"
+                                    : ""
+                                }
+                              >
+                                Agregar
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                )}
               {!buscandoSugerencias &&
                 productosFiltrados.length === 0 &&
                 !searchTerm.trim() && (
-                  <p className="text-gray-400 text-center py-8 bg-white">No hay productos registrados</p>
+                  <p className="text-gray-400 text-center py-8 bg-white">
+                    No hay productos registrados
+                  </p>
                 )}
               {!buscandoSugerencias &&
                 productosFiltrados.length === 0 &&
                 searchTerm.trim() && (
-                  <p className="text-gray-400 text-center py-8 bg-white">Sin coincidencias</p>
+                  <p className="text-gray-400 text-center py-8 bg-white">
+                    Sin coincidencias
+                  </p>
                 )}
             </div>
           </div>
@@ -988,7 +1134,10 @@ const CajaRegistradora = ({ onVentaCompletada }) => {
                       return;
                     }
                     const sug = clientesIndex
-                      .filter((c) => c.fullNorm.includes(q) || c.correoNorm.includes(q))
+                      .filter(
+                        (c) =>
+                          c.fullNorm.includes(q) || c.correoNorm.includes(q),
+                      )
                       .slice(0, 6);
                     setClienteSugerencias(sug);
                     const exact = clientesIndex.find((c) => c.fullNorm === q);
@@ -996,7 +1145,8 @@ const CajaRegistradora = ({ onVentaCompletada }) => {
                     setClienteSugVisible(sug.length > 0);
                   }}
                   onFocus={() => {
-                    if (clienteSugerencias.length > 0) setClienteSugVisible(true);
+                    if (clienteSugerencias.length > 0)
+                      setClienteSugVisible(true);
                   }}
                   onBlur={() => {
                     // Pequeño delay para permitir click en sugerencia
@@ -1028,9 +1178,15 @@ const CajaRegistradora = ({ onVentaCompletada }) => {
                       >
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0">
-                            <p className="text-sm font-semibold text-gray-900 truncate">{c.full}</p>
+                            <p className="text-sm font-semibold text-gray-900 truncate">
+                              {c.full}
+                            </p>
                             <p className="text-[11px] text-gray-500 truncate">
-                              {c.correo ? c.correo : (c.tel ? `Tel: ${c.tel}` : "—")}
+                              {c.correo
+                                ? c.correo
+                                : c.tel
+                                  ? `Tel: ${c.tel}`
+                                  : "—"}
                             </p>
                           </div>
                           <span className="text-[10px] font-semibold text-emerald-700 shrink-0">
@@ -1075,14 +1231,18 @@ const CajaRegistradora = ({ onVentaCompletada }) => {
                 placeholder="Teléfono / WhatsApp"
                 className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm bg-emerald-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-200"
                 value={cliente.telefono}
-                onChange={(e) => setCliente({ ...cliente, telefono: e.target.value })}
+                onChange={(e) =>
+                  setCliente({ ...cliente, telefono: e.target.value })
+                }
               />
               <input
                 type="text"
                 placeholder="Documento (DNI/RUC) - opcional"
                 className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm bg-emerald-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-200"
                 value={cliente.documento}
-                onChange={(e) => setCliente({ ...cliente, documento: e.target.value })}
+                onChange={(e) =>
+                  setCliente({ ...cliente, documento: e.target.value })
+                }
               />
             </div>
           </div>
@@ -1091,18 +1251,26 @@ const CajaRegistradora = ({ onVentaCompletada }) => {
           <div className="bg-white rounded-2xl p-5 shadow-sm">
             <h2 className="font-bold text-gray-800 mb-1">Carrito de venta</h2>
             <p className="text-xs text-gray-500 mb-3">
-              Con inventario por madurez indica kg de <strong>Verde</strong>, <strong>Sazón</strong> y <strong>Maduro</strong> — el servidor descuenta cada uno por separado al registrar la venta.{" "}
-              <span className="text-gray-400">Cantidad mayor que el máximo se ajusta sola.</span>
+              Con inventario por madurez indica kg de <strong>Verde</strong>,{" "}
+              <strong>Sazón</strong> y <strong>Maduro</strong> — el servidor
+              descuenta cada uno por separado al registrar la venta.{" "}
+              <span className="text-gray-400">
+                Cantidad mayor que el máximo se ajusta sola.
+              </span>
             </p>
             <div className="max-h-96 overflow-y-auto space-y-3">
               {carrito.length === 0 ? (
-                <p className="text-gray-400 text-center py-4">No hay productos agregados</p>
+                <p className="text-gray-400 text-center py-4">
+                  No hay productos agregados
+                </p>
               ) : (
                 carrito.map((item, index) => {
                   const p = productoPorId.get(idProducto(item.productoId));
                   const precioU = precioNum(item.precioUnitario);
                   const esBuckets =
-                    item.kgPorMadurez != null && typeof item.kgPorMadurez === "object" && usaBucketsPalta(p || {});
+                    item.kgPorMadurez != null &&
+                    typeof item.kgPorMadurez === "object" &&
+                    usaBucketsPalta(p || {});
 
                   if (esBuckets && p) {
                     const kg = item.kgPorMadurez;
@@ -1118,15 +1286,28 @@ const CajaRegistradora = ({ onVentaCompletada }) => {
                       >
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0 flex-1">
-                            <p className="font-semibold text-sm text-gray-900">{item.nombre}</p>
-                            {item.tipo != null && String(item.tipo).trim() !== "" && String(item.tipo).trim() !== "—" ? (
+                            <p className="font-semibold text-sm text-gray-900">
+                              {item.nombre}
+                            </p>
+                            {item.tipo != null &&
+                            String(item.tipo).trim() !== "" &&
+                            String(item.tipo).trim() !== "—" ? (
                               <p className="text-[11px] text-amber-900/90 font-medium mt-0.5">
-                                Tipo: <span className="text-gray-800">{String(item.tipo).trim()}</span>
+                                Tipo:{" "}
+                                <span className="text-gray-800">
+                                  {String(item.tipo).trim()}
+                                </span>
                               </p>
                             ) : null}
                             <p className="text-[11px] text-gray-500 mt-0.5">
-                              Unidad: <span className="text-gray-700">{item.medida || "—"}</span> · Total kg:{" "}
-                              <span className="font-semibold text-gray-800">{kgTot}</span>
+                              Unidad:{" "}
+                              <span className="text-gray-700">
+                                {item.medida || "—"}
+                              </span>{" "}
+                              · Total kg:{" "}
+                              <span className="font-semibold text-gray-800">
+                                {kgTot}
+                              </span>
                             </p>
                           </div>
                           <button
@@ -1139,27 +1320,35 @@ const CajaRegistradora = ({ onVentaCompletada }) => {
                           </button>
                         </div>
 
-                        <p className="text-xs font-semibold text-teal-900">Kg por estado (precio igual /kg)</p>
+                        <p className="text-xs font-semibold text-teal-900">
+                          Kg por estado (precio igual /kg)
+                        </p>
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                           <BucketKgInput
                             label={`Verde (máx. ${stockKgPorMadurez(p, "verde")})`}
                             value={kg.verde}
                             maxKg={stockKgPorMadurez(p, "verde")}
-                            onCommit={(n) => actualizarKgBucket(index, "verde", n)}
+                            onCommit={(n) =>
+                              actualizarKgBucket(index, "verde", n)
+                            }
                             aria-label="Kilogramos palta verde"
                           />
                           <BucketKgInput
                             label={`Sazón (máx. ${stockKgPorMadurez(p, "sazon")})`}
                             value={kg.sazon}
                             maxKg={stockKgPorMadurez(p, "sazon")}
-                            onCommit={(n) => actualizarKgBucket(index, "sazon", n)}
+                            onCommit={(n) =>
+                              actualizarKgBucket(index, "sazon", n)
+                            }
                             aria-label="Kilogramos sazón"
                           />
                           <BucketKgInput
                             label={`Maduro (máx. ${stockKgPorMadurez(p, "maduro")})`}
                             value={kg.maduro}
                             maxKg={stockKgPorMadurez(p, "maduro")}
-                            onCommit={(n) => actualizarKgBucket(index, "maduro", n)}
+                            onCommit={(n) =>
+                              actualizarKgBucket(index, "maduro", n)
+                            }
                             aria-label="Kilogramos palta madura"
                           />
                         </div>
@@ -1177,7 +1366,10 @@ const CajaRegistradora = ({ onVentaCompletada }) => {
                   }
 
                   const maxPermitido = p ? stockDisponible(p) : 0;
-                  const cantNum = Math.max(1, Math.floor(precioNum(item.cantidad) || 1));
+                  const cantNum = Math.max(
+                    1,
+                    Math.floor(precioNum(item.cantidad) || 1),
+                  );
                   const sub = cantNum * precioU;
                   const alLimite = cantNum >= maxPermitido || maxPermitido <= 0;
                   return (
@@ -1187,14 +1379,24 @@ const CajaRegistradora = ({ onVentaCompletada }) => {
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0 flex-1">
-                          <p className="font-semibold text-sm text-gray-900">{item.nombre}</p>
-                          {item.tipo != null && String(item.tipo).trim() !== "" && String(item.tipo).trim() !== "—" ? (
+                          <p className="font-semibold text-sm text-gray-900">
+                            {item.nombre}
+                          </p>
+                          {item.tipo != null &&
+                          String(item.tipo).trim() !== "" &&
+                          String(item.tipo).trim() !== "—" ? (
                             <p className="text-[11px] text-amber-900/90 font-medium mt-0.5">
-                              Tipo: <span className="text-gray-800">{String(item.tipo).trim()}</span>
+                              Tipo:{" "}
+                              <span className="text-gray-800">
+                                {String(item.tipo).trim()}
+                              </span>
                             </p>
                           ) : null}
                           <p className="text-[11px] text-gray-500 mt-0.5">
-                            Unidad: <span className="text-gray-700">{item.medida || "—"}</span>
+                            Unidad:{" "}
+                            <span className="text-gray-700">
+                              {item.medida || "—"}
+                            </span>
                           </p>
                         </div>
                         <button
@@ -1212,7 +1414,9 @@ const CajaRegistradora = ({ onVentaCompletada }) => {
                           S/ {formatSoles(precioU)}
                         </dd>
                         <dt className="text-gray-500">Cantidad (kg)</dt>
-                        <dd className="text-right text-gray-500 text-[11px]">Máx. {maxPermitido}</dd>
+                        <dd className="text-right text-gray-500 text-[11px]">
+                          Máx. {maxPermitido}
+                        </dd>
                         <dt className="text-gray-500 col-span-2 pt-1 border-t border-gray-200 mt-1">
                           Subtotal
                         </dt>
@@ -1238,7 +1442,9 @@ const CajaRegistradora = ({ onVentaCompletada }) => {
                           disabled={alLimite}
                           onClick={() => actualizarCantidad(index, cantNum + 1)}
                           className="w-9 h-9 rounded-full bg-gray-200 text-gray-800 font-bold hover:bg-gray-300 disabled:opacity-40 disabled:cursor-not-allowed"
-                          title={alLimite ? "Cantidad máxima alcanzada" : "Aumentar"}
+                          title={
+                            alLimite ? "Cantidad máxima alcanzada" : "Aumentar"
+                          }
                         >
                           +
                         </button>
@@ -1259,7 +1465,9 @@ const CajaRegistradora = ({ onVentaCompletada }) => {
               </div>
               <div className="flex justify-between items-baseline font-bold">
                 <span className="text-gray-800">Total</span>
-                <span className="text-xl text-emerald-700">S/ {formatSoles(total)}</span>
+                <span className="text-xl text-emerald-700">
+                  S/ {formatSoles(total)}
+                </span>
               </div>
             </div>
           </div>
@@ -1268,7 +1476,9 @@ const CajaRegistradora = ({ onVentaCompletada }) => {
           <div className="bg-white rounded-2xl p-5 shadow-sm">
             <div className="grid grid-cols-2 gap-3 mb-3">
               <div>
-                <label className="block text-xs text-gray-500 mb-1">Método de pago</label>
+                <label className="block text-xs text-gray-500 mb-1">
+                  Método de pago
+                </label>
                 <select
                   className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm"
                   value={metodoPago}
@@ -1282,7 +1492,9 @@ const CajaRegistradora = ({ onVentaCompletada }) => {
                 </select>
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">Comprobante</label>
+                <label className="block text-xs text-gray-500 mb-1">
+                  Comprobante
+                </label>
                 <select
                   className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm"
                   value={comprobante}
@@ -1308,11 +1520,16 @@ const CajaRegistradora = ({ onVentaCompletada }) => {
       {mostrarModalEnvio && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-6">
-            <h3 className="text-xl font-bold text-emerald-900 mb-4">Enviar comprobante</h3>
+            <h3 className="text-xl font-bold text-emerald-900 mb-4">
+              Enviar comprobante
+            </h3>
             <p className="text-sm text-gray-500 mb-4">
               Venta registrada: <strong>{ventaActual?.numeroVenta}</strong>
               <br />
-              Total: <strong className="text-emerald-700">S/ {ventaActual?.total?.toFixed(2)}</strong>
+              Total:{" "}
+              <strong className="text-emerald-700">
+                S/ {ventaActual?.total?.toFixed(2)}
+              </strong>
             </p>
 
             <div className="flex gap-3 mb-4">
@@ -1338,7 +1555,11 @@ const CajaRegistradora = ({ onVentaCompletada }) => {
 
             <input
               type={tipoEnvio === "email" ? "email" : "tel"}
-              placeholder={tipoEnvio === "email" ? "correo@ejemplo.com" : "Número de WhatsApp (ej: 966142980)"}
+              placeholder={
+                tipoEnvio === "email"
+                  ? "correo@ejemplo.com"
+                  : "Número de WhatsApp (ej: 966142980)"
+              }
               className="w-full px-4 py-2 rounded-xl border border-gray-200 mb-4"
               value={destinoEnvio}
               onChange={(e) => setDestinoEnvio(e.target.value)}

@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { Toaster, toast } from "sonner";
 import PasswordInput from "./PasswordInput";
 
 const API_LOGIN = "http://localhost:5000/api/empleados/login";
@@ -22,12 +23,16 @@ const WorkerLoginPage = () => {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        alert(data.message || "No se pudo iniciar sesión.");
+        toast.error(data.message || "Correo o contraseña incorrectos.");
         return;
       }
       if (data.empleado) {
-        localStorage.setItem("trabajador_logueado", "true");
-        localStorage.setItem("trabajador_actual", JSON.stringify(data.empleado));
+        // Guardar token JWT en sessionStorage
+        if (data.token) {
+          sessionStorage.setItem("auth_token", data.token);
+        }
+        // Guardar datos del empleado en sessionStorage (mismo lugar que en LoginPage)
+        sessionStorage.setItem("user_profile", JSON.stringify(data.empleado));
       }
       window.location.href = "/admin-dashboard";
     } catch (err) {
@@ -40,6 +45,7 @@ const WorkerLoginPage = () => {
 
   return (
     <div className="flex min-h-screen flex-col bg-gradient-to-br from-[#d4e9e2]/55 via-white to-[#f6f4ef]">
+      <Toaster position="bottom-center" richColors success/>
       <header className="flex items-center justify-between bg-[#1e3932] px-6 py-4 shadow-md md:px-10">
         <h1 className="text-base font-semibold tracking-tight text-white md:text-xl">
           Frutería Señor de Muruhuay — Acceso trabajador
@@ -58,11 +64,14 @@ const WorkerLoginPage = () => {
       <main className="flex flex-1 items-center justify-center px-4 py-10">
         <div className="w-full max-w-md rounded-3xl border border-[#d4e9e2]/90 bg-white p-8 shadow-[0_24px_60px_-12px_rgba(30,57,50,0.18)] md:p-10">
           <p className="mb-6 text-sm leading-relaxed text-[#1e3932]/85">
-            Usa el correo y la contraseña que te asignó el administrador en la sección Empleados.
+            Usa el correo y la contraseña que te asignó el administrador en la
+            sección Empleados.
           </p>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="mb-1 block text-sm font-medium text-[#1e3932]">Correo electrónico</label>
+              <label className="mb-1 block text-sm font-medium text-[#1e3932]">
+                Correo electrónico
+              </label>
               <input
                 type="email"
                 className={inputClass}
@@ -74,7 +83,9 @@ const WorkerLoginPage = () => {
               />
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium text-[#1e3932]">Contraseña</label>
+              <label className="mb-1 block text-sm font-medium text-[#1e3932]">
+                Contraseña
+              </label>
               <PasswordInput
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}

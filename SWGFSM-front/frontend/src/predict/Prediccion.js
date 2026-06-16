@@ -30,12 +30,12 @@ const estimatePh = (dias, tamano, tipo) => {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 const ESTADO_LABELS = ["verde", "sazon", "maduro", "punto_negro"];
-const ACCIONES_MAP  = ["En proceso", "Almacenar", "Vender hoy", "Venta urgente"];
+const ACCIONES_MAP = ["En proceso", "Almacenar", "Vender hoy", "Venta urgente"];
 const ESTADO_CONFIG = {
-  maduro:      { label: "Maduro",      bg: "bg-yellow-100",  text: "text-yellow-800"  },
-  punto_negro: { label: "Punto negro", bg: "bg-red-100",     text: "text-red-800"     },
-  sazon:       { label: "Sazón",       bg: "bg-emerald-100", text: "text-emerald-800" },
-  verde:       { label: "Verde",       bg: "bg-sky-100",     text: "text-sky-800"     },
+  maduro: { label: "Maduro", bg: "bg-yellow-100", text: "text-yellow-800" },
+  punto_negro: { label: "Punto negro", bg: "bg-red-100", text: "text-red-800" },
+  sazon: { label: "Sazón", bg: "bg-emerald-100", text: "text-emerald-800" },
+  verde: { label: "Verde", bg: "bg-sky-100", text: "text-sky-800" },
 };
 const SUB_LOTE_CONFIG = {
   verde:       { label: "Verde",  bg: "bg-sky-50",     text: "text-sky-700",     icon: "🟢" },
@@ -45,23 +45,44 @@ const SUB_LOTE_CONFIG = {
 };
 const API = "http://localhost:5000/api/prediccion";
 
+const getAuthToken = () => {
+  return sessionStorage.getItem("auth_token");
+};
+
+const fetchWithAuth = async (url, options = {}) => {
+  const token = getAuthToken();
+  const headers = {
+    "Content-Type": "application/json",
+    ...options.headers,
+  };
+
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  return fetch(url, {
+    ...options,
+    headers,
+  });
+};
+
 // ═══════════════════════════════════════════════════════════════════════════════
 //  HOOK
 // ═══════════════════════════════════════════════════════════════════════════════
 const useInventarioML = () => {
-  const [data,        setData]        = useState([]);
-  const [resumen,     setResumen]     = useState(null);
+  const [data, setData] = useState([]);
+  const [resumen, setResumen] = useState(null);
   const [historialDB, setHistorialDB] = useState([]);
-  const [loading,     setLoading]     = useState(true);
-  const [error,       setError]       = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   const cargar = useCallback(async () => {
     setLoading(true);
     try {
       const [invRes, resRes, histRes] = await Promise.all([
-        fetch(`${API}/inventario`).then(r => r.json()),
-        fetch(`${API}/resumen`).then(r => r.json()),
-        fetch(`${API}/historial`).then(r => r.json()),
+        fetchWithAuth(`${API}/inventario`).then((r) => r.json()),
+        fetchWithAuth(`${API}/resumen`).then((r) => r.json()),
+        fetchWithAuth(`${API}/historial`).then((r) => r.json()),
       ]);
       if (invRes.ok) {
         const normSub = v => {
@@ -89,7 +110,7 @@ const useInventarioML = () => {
           accuracy:    typeof p.accuracy === "number" ? p.accuracy : null,
         })));
       }
-      if (resRes.ok)  setResumen(resRes.data);
+      if (resRes.ok) setResumen(resRes.data);
       if (histRes.ok) setHistorialDB(histRes.data);
     } catch(e) { setError(e.message); }
     finally    { setLoading(false); }
@@ -127,7 +148,9 @@ const playAlertSound = () => {
 //  MODAL ALERTA
 // ═══════════════════════════════════════════════════════════════════════════════
 const AlertModal = ({ predictions, onDismiss }) => {
-  const criticos = predictions.filter(p => p.estadoML === "punto_negro" || p.estadoML === "maduro");
+  const criticos = predictions.filter(
+    (p) => p.estadoML === "punto_negro" || p.estadoML === "maduro",
+  );
   if (!criticos.length) return null;
   const hayPN = criticos.some(p => p.estadoML === "punto_negro");
   return (
@@ -233,7 +256,7 @@ const TABS = [
 ];
 
 // ═══════════════════════════════════════════════════════════════════════════════
-//  COMPONENTE PRINCIPAL
+//  COMPONENTE PRINCIPAL  
 // ═══════════════════════════════════════════════════════════════════════════════
 const Prediccion = () => {
   const [tab,            setTab]            = useState("resumen");
@@ -261,7 +284,7 @@ const Prediccion = () => {
   const isTipoAbierto = (tipo) => tiposAbiertos[tipo] === true;
 
   const reentrenarBackend = useCallback(async () => {
-    try { await fetch(`${API}/reentrenar`,{method:"POST"}); setTimeout(()=>recargar(),30000); }
+    try { await fetchWithAuth(`${API}/reentrenar`,{method:"POST"}); setTimeout(()=>recargar(),30000); }
     catch(e){ console.error(e); }
   }, [recargar]);
 
@@ -704,6 +727,16 @@ const Prediccion = () => {
                           {[1,2,3,4,5,6,7,8,9].map(j=><td key={j} className="px-4 py-2"><Skel className="h-4 w-full"/></td>)}
                         </tr>
                       ))}
+                      {mlStatus === "training" &&
+                        [1, 2, 3].map((i) => (
+                          <tr key={i} className="border-t border-lime-100">
+                            {[1, 2, 3, 4, 5, 6, 7, 8].map((j) => (
+                              <td key={j} className="px-4 py-2.5">
+                                <Skel className="h-4 w-full" />
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
                     </tbody>
                   </table>
                 </div>
@@ -800,7 +833,6 @@ const Prediccion = () => {
                 </div>
               </div>
             )}
-
           </div>
         </div>
       </section>

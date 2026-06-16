@@ -1,6 +1,7 @@
 // src/components/CartSidebar.js
 
 import React from "react";
+import {Toaster, toast} from "sonner";
 
 function resumenKgLineaCarrito(item) {
   if (item?.esBuckets && item.kgPorMadurez) {
@@ -20,8 +21,12 @@ const CartSidebar = ({ isOpen, items, onClose, onCheckout, onRemoveItem, total }
   const handlePagarClick = () => {
     const logged = localStorage.getItem("cliente_logueado") === "true";
     if (!logged) {
-      alert("Para pagar debes iniciar sesión o crear una cuenta.");
-      window.location.href = "/login";
+      toast("Para poder realizar el pago debes iniciar sesión o crear una cuenta.", {
+        action: {
+          label: 'Aceptar',
+          onClick: () => window.location.href = "/login"
+        }
+      });
       return;
     }
     onCheckout();
@@ -29,6 +34,7 @@ const CartSidebar = ({ isOpen, items, onClose, onCheckout, onRemoveItem, total }
 
   return (
     <div className="fixed inset-0 z-[100] flex">
+      <Toaster position="bottom-center" richColors success/>
       <div className="flex-1 bg-black/40" onClick={onClose} />
       <div className="w-full max-w-md bg-white h-full shadow-2xl flex flex-col">
         <div className="flex items-center justify-between px-6 py-4 border-b">

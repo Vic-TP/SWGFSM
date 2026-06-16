@@ -2,9 +2,30 @@ import React, { useEffect, useState, useCallback } from "react";
 
 const API_TAREAS = "http://localhost:5000/api/tareas";
 
+const getAuthToken = () => {
+  return sessionStorage.getItem("auth_token");
+};
+
+const fetchWithAuth = async (url, options = {}) => {
+  const token = getAuthToken();
+  const headers = {
+    "Content-Type": "application/json",
+    ...options.headers,
+  };
+
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  return fetch(url, {
+    ...options,
+    headers,
+  });
+};
+
 const readTrabajador = () => {
   try {
-    const raw = localStorage.getItem("trabajador_actual");
+    const raw = sessionStorage.getItem("user_profile");
     return raw ? JSON.parse(raw) : null;
   } catch {
     return null;
@@ -14,7 +35,10 @@ const readTrabajador = () => {
 const fmtFecha = (d) => {
   if (!d) return "—";
   try {
-    return new Date(d).toLocaleString("es-PE", { dateStyle: "short", timeStyle: "short" });
+    return new Date(d).toLocaleString("es-PE", {
+      dateStyle: "short",
+      timeStyle: "short",
+    });
   } catch {
     return "—";
   }
@@ -35,7 +59,7 @@ const TareasAsignadas = () => {
     }
     setLoading(true);
     try {
-      const res = await fetch(`${API_TAREAS}/empleado/${empleadoId}`);
+      const res = await fetchWithAuth(`${API_TAREAS}/empleado/${empleadoId}`);
       const data = await res.json().catch(() => []);
       if (!res.ok) {
         setTareas([]);
@@ -57,7 +81,7 @@ const TareasAsignadas = () => {
   const cambiarEstado = async (id, nuevoEstado) => {
     setUpdatingId(id);
     try {
-      const res = await fetch(`${API_TAREAS}/${id}`, {
+      const res = await fetchWithAuth(`${API_TAREAS}/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ estado: nuevoEstado }),
@@ -91,9 +115,12 @@ const TareasAsignadas = () => {
       <div className="rounded-3xl border border-lime-200 bg-white p-6 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 className="text-lg font-bold text-emerald-900">Tareas asignadas</h2>
+            <h2 className="text-lg font-bold text-emerald-900">
+              Tareas asignadas
+            </h2>
             <p className="mt-1 text-sm text-gray-600">
-              Aquí aparecen las tareas que el administrador te ha asignado. Marca como completada cuando las termines.
+              Aquí aparecen las tareas que el administrador te ha asignado.
+              Marca como completada cuando las termines.
             </p>
             {trabajador?.nombres && (
               <p className="mt-2 text-xs text-emerald-800">
@@ -134,19 +161,27 @@ const TareasAsignadas = () => {
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="text-base font-bold text-emerald-950">{t.titulo}</h3>
+                      <h3 className="text-base font-bold text-emerald-950">
+                        {t.titulo}
+                      </h3>
                       <span
                         className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${
-                          pendiente ? "bg-amber-100 text-amber-900" : "bg-emerald-100 text-emerald-800"
+                          pendiente
+                            ? "bg-amber-100 text-amber-900"
+                            : "bg-emerald-100 text-emerald-800"
                         }`}
                       >
                         {pendiente ? "Pendiente" : "Completada"}
                       </span>
                     </div>
                     {t.descripcion ? (
-                      <p className="mt-2 text-sm leading-relaxed text-gray-700 whitespace-pre-wrap">{t.descripcion}</p>
+                      <p className="mt-2 text-sm leading-relaxed text-gray-700 whitespace-pre-wrap">
+                        {t.descripcion}
+                      </p>
                     ) : null}
-                    <p className="mt-3 text-[11px] text-gray-400">Asignada: {fmtFecha(t.fechaCreacion)}</p>
+                    <p className="mt-3 text-[11px] text-gray-400">
+                      Asignada: {fmtFecha(t.fechaCreacion)}
+                    </p>
                   </div>
                   <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
                     {pendiente ? (
