@@ -104,7 +104,7 @@ const ProductDetail = ({ product, onClose, onAddToCart }) => {
     return `${nombre || "Producto"} ${tipo}`;
   })();
   const descripcion =
-    product.detalle || product.descripcion || product.description || "";
+    product.descripcion || product.description || "";
   const subtitulo =
     product.tipo && String(product.tipo).trim()
       ? `${product.tipo} · ${product.unidadMedida || "kg"}`
@@ -205,9 +205,7 @@ const ProductDetail = ({ product, onClose, onAddToCart }) => {
 
           <div className="flex flex-col md:flex-row">
             <div className="md:w-1/2 bg-gradient-to-br from-lime-50 to-emerald-50 p-6 md:p-8 flex flex-col items-center justify-center md:rounded-l-3xl gap-4">
-              <div
-                className={`grid gap-4 w-full max-w-sm mx-auto ${imgsFicha.length > 1 ? "grid-cols-2" : "grid-cols-1"}`}
-              >
+              <div className="flex flex-col gap-5 w-full max-w-xs mx-auto">
                 {imgsFicha.map((src, i) => {
                   const nt = `${product?.nombre || ""} ${product?.tipo || ""}`.toLowerCase();
                   const esHass = nt.includes("hass");

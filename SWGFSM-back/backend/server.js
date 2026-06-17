@@ -47,12 +47,16 @@ const prediccionRoutes = require("./routes/prediccion"); // Nueva ruta de ML
 const pagoSimuladoRoutes = require("./routes/pagoSimuladoRoutes");
 const tareaRoutes = require("./routes/tareaRoutes");
 const entregaRoutes = require("./routes/entregaRoutes");
+const promocionRoutes = require("./routes/promocionRoutes");
+const descuentoRoutes = require("./routes/descuentoRoutes");
 const verifyJWT = require("./middleware/verifyJWT"); // Middleware para proteger rutas
 
 // --- Definición de Endpoints ---
 app.use("/api/clientes", clienteRoutes); //CORREGIR
 app.use("/api/empleados", empleadoRoutes); //CORREGIR
 app.use("/api/producto", productoRoutes); //PARA PODER VER EL PRODUCTO DESDE EL LANDING PAGE
+app.use("/api/promociones", promocionRoutes);
+app.use("/api/descuentos", descuentoRoutes);
 app.use("/api/inventario", verifyJWT, inventarioRoutes);
 app.use("/api/ventas", verifyJWT, ventasRoutes);
 app.use("/api/proveedores", verifyJWT, proveedorRoutes);
