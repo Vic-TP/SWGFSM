@@ -6,6 +6,7 @@ import Header from "./Header";
 import Footer from "./Footer";
 import CartSidebar from "./CartSidebar";
 import ProductDetail from "./ProductDetail";
+import PromocionDetail from "./PromocionDetail";
 import PaymentGateway from "./PaymentGateway";
 import {
   categoriaCatalogo,
@@ -13,9 +14,20 @@ import {
   descripcionCortaTarjeta,
   tipoProductoLabel,
   MEASURE_CARRITO_BUCKETS,
+  MEASURE_CARRITO_PROMO,
   clampKgPorMadurezUi,
   totalKgBuckets,
+  promocionEstaActiva,
+  precioPackPromocion,
+  nombrePackPromocion,
+  variedadPackPromocion,
+  kgMaduraPackPromocion,
+  imagenPromoPorTipo,
+  roundKg,
 } from "../utils/tiendaProducto";
+import { calcularDescuentoOnlineCliente } from "../utils/descuentoOnline";
+import { cargarCarrito, guardarCarrito, vaciarCarritoStorage } from "../utils/cartStorage";
+import PromocionDescuentoPopup from "./PromocionDescuentoPopup";
 
 import paltaHassVerde from "../assets/palta-hass-verde.png";
 import paltaHassMadura from "../assets/palta-hass-madura.png";
@@ -42,6 +54,7 @@ import iconMejorPrecio from "../assets/iconos/mejor_precio.png";
 import iconCalidad from "../assets/iconos/calidad.png";
 
 const API_URL_PRODUCTOS = "http://localhost:5000/api/producto";
+const API_URL_PROMOCIONES = "http://localhost:5000/api/promociones";
 const API_URL_VENTAS = "http://localhost:5000/api/ventas";
 
 /** Carrusel hero: rutas empaquetadas por Webpack (siempre visibles en dev y build). Para tus fotos, sustituye los PNG en src/assets (o public/hero-carousel vía código). */
@@ -136,10 +149,9 @@ const normalizarProductos = (lista) =>
             ? [IMG_DEFAULTS.fuerteMostrador]
             : [],
         precio: precioNum(p.precioVenta),
-        description: (p.detalle || p.descripcion || "").trim(),
+        description: String(p.descripcion || "").trim(),
         descripcionCorta: descripcionCortaTarjeta(p),
         categoria: categoriaCatalogo(p),
-        rating: 5,
       };
     });
 
@@ -265,7 +277,8 @@ const PANEL_VARIEDAD = {
 
 const HomePage = () => {
   const [selectedProduct, setSelectedProduct] = useState(null);
-  const [cartItems, setCartItems] = useState([]);
+  const [selectedPromocion, setSelectedPromocion] = useState(null);
+  const [cartItems, setCartItems] = useState(() => cargarCarrito());
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [client, setClient] = useState(null);
   const [filterCategoria, setFilterCategoria] = useState("todos");
@@ -273,9 +286,12 @@ const HomePage = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState("efectivo");
   const [productosActivos, setProductosActivos] = useState([]);
+  const [promociones, setPromociones] = useState([]);
   const [loadingProductos, setLoadingProductos] = useState(true);
   const [heroSlide, setHeroSlide] = useState(0);
   const [nutriLightbox, setNutriLightbox] = useState(null);
+  const [codigoDescuentoInput, setCodigoDescuentoInput] = useState("");
+  const [descuentoAplicado, setDescuentoAplicado] = useState(null);
 
   useEffect(() => {
     if (!nutriLightbox) return;
@@ -303,18 +319,52 @@ const HomePage = () => {
   }, []);
 
   useEffect(() => {
+    guardarCarrito(cartItems);
+  }, [cartItems]);
+
+  useEffect(() => {
+    setDescuentoAplicado((prev) => {
+      if (!prev?.ok) return prev;
+      const r = calcularDescuentoOnlineCliente({
+        codigo: prev.codigo,
+        cartItems,
+        productosCatalogo: productosActivos,
+      });
+      if (!r.ok) {
+        setCodigoDescuentoInput("");
+        return null;
+      }
+      return r;
+    });
+  }, [cartItems, productosActivos]);
+
+  useEffect(() => {
     let cancel = false;
     (async () => {
       setLoadingProductos(true);
       try {
-        const res = await fetchWithAuth(API_URL_PRODUCTOS);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
+        const [resProd, resPromo] = await Promise.all([
+          fetchWithAuth(API_URL_PRODUCTOS),
+          fetch(API_URL_PROMOCIONES),
+        ]);
+        if (!resProd.ok) throw new Error(`HTTP ${resProd.status}`);
+        const data = await resProd.json();
         const raw = Array.isArray(data) ? data : [];
-        if (!cancel) setProductosActivos(normalizarProductos(raw));
+        let promos = [];
+        if (resPromo.ok) {
+          const pj = await resPromo.json();
+          promos = Array.isArray(pj) ? pj : [];
+        }
+        if (!cancel) {
+          setProductosActivos(normalizarProductos(raw));
+          setPromociones(promos);
+        }
       } catch (e) {
         console.error("Error al cargar productos:", e);
-        if (!cancel) setProductosActivos([]);
+        if (!cancel) {
+          setProductosActivos([]);
+          setPromociones([]);
+        }
       } finally {
         if (!cancel) setLoadingProductos(false);
       }
@@ -338,7 +388,70 @@ const HomePage = () => {
     [productosActivos]
   );
 
-  const handleAddToCart = (product, quantity = 1, measure = "1kg", meta = {}) => {
+  const handleAddToCart = (productOrPromo, quantityOrStock = 1, measureOrMeta = "1kg", metaArg = {}) => {
+    const metaPromo =
+      (typeof measureOrMeta === "object" && measureOrMeta?.esPromocion && measureOrMeta) ||
+      (metaArg?.esPromocion ? metaArg : null);
+    const esPromoPack = measureOrMeta === "pack-promo" || Boolean(metaPromo);
+
+    if (esPromoPack) {
+      const promocion = productOrPromo;
+      const productoStock = quantityOrStock;
+      const meta = metaPromo || (typeof measureOrMeta === "object" ? measureOrMeta : metaArg);
+      const qty = Math.max(
+        1,
+        Math.floor(
+          Number(
+            meta.cantidadPacks ??
+              (typeof measureOrMeta === "number" ? measureOrMeta : undefined)
+          )
+        ) || 1
+      );
+      const precioPack = precioNum(meta.precioLinea ?? promocion.precio);
+      const kgPorPack = Math.max(0.01, Number(meta.promocionKgMadura) || kgMaduraPackPromocion(promocion));
+      const promocionId = String(meta.promocionId ?? promocion._id);
+      const productoId = idProducto(meta.productoId ?? productoStock?._id);
+      const nombrePack = meta.nombrePromocion || nombrePackPromocion(promocion);
+      const variedad = variedadPackPromocion(promocion);
+
+      setCartItems((prev) => {
+        const ix = prev.findIndex(
+          (i) => i.promocionId === promocionId && i.esPromocion === true
+        );
+        if (ix >= 0) {
+          const newQty = prev[ix].quantity + qty;
+          return prev.map((i, idx) =>
+            idx === ix ? { ...i, quantity: newQty, cantidadPacks: newQty } : i
+          );
+        }
+        return [
+          ...prev,
+          {
+            promocionId,
+            productoId,
+            id: promocionId,
+            name: `Pack ${variedad || "Palta"} — ${nombrePack}`,
+            tipo: variedad || "—",
+            price: precioPack,
+            image: meta.imagenPromo || productoStock?.imagen,
+            measure: MEASURE_CARRITO_PROMO,
+            esPromocion: true,
+            nombrePromocion: nombrePack,
+            quantity: qty,
+            cantidadPacks: qty,
+            promocionKgMadura: kgPorPack,
+            precioUnitario: precioPack,
+          },
+        ];
+      });
+      setIsCartOpen(true);
+      return;
+    }
+
+    const product = productOrPromo;
+    const quantity = quantityOrStock;
+    const measure = measureOrMeta;
+    const meta = metaArg;
     const productoId = idProducto(product._id);
     const precioUnitario = precioNum(product.precioVenta ?? product.precio);
     const precioLinea = precioNum(
@@ -422,6 +535,11 @@ const HomePage = () => {
   };
 
   const handleRemoveCartItem = (itemToRemove) => {
+    if (itemToRemove?.esPromocion && itemToRemove?.promocionId) {
+      const pid = String(itemToRemove.promocionId);
+      setCartItems((prev) => prev.filter((i) => String(i.promocionId) !== pid));
+      return;
+    }
     const pid = idProducto(itemToRemove?.productoId ?? itemToRemove?.id);
     const measure = itemToRemove?.measure ?? "1kg";
     setCartItems((prev) =>
@@ -443,6 +561,27 @@ const HomePage = () => {
           return;
         }
     setShowPayment(true);
+  };
+
+  const handleAplicarCodigoDescuento = () => {
+    const r = calcularDescuentoOnlineCliente({
+      codigo: codigoDescuentoInput,
+      cartItems,
+      productosCatalogo: productosActivos,
+    });
+    if (!r.ok) {
+      toast.error(r.message);
+      setDescuentoAplicado(null);
+      return;
+    }
+    setDescuentoAplicado(r);
+    setCodigoDescuentoInput(r.codigo);
+    toast.success(`Descuento ${r.porcentaje}% aplicado a palta madura.`);
+  };
+
+  const handleQuitarCodigoDescuento = () => {
+    setDescuentoAplicado(null);
+    setCodigoDescuentoInput("");
   };
 
   const handlePaymentSuccess = async (deliveryInfo = {}) => {
@@ -477,6 +616,30 @@ const HomePage = () => {
         return filas;
       }
 
+      if (item.esPromocion || item.measure === MEASURE_CARRITO_PROMO) {
+        const packs = Math.max(1, Math.floor(Number(item.cantidadPacks ?? item.quantity)) || 1);
+        const kgPorPack = Math.max(0.01, Number(item.promocionKgMadura) || 1);
+        const cantidadKg = roundKg(packs * kgPorPack);
+        const puPromo = precioNum(item.precioUnitario ?? item.price);
+        return [
+          {
+            ...base,
+            productoId: idProducto(item.productoId),
+            promocionId: item.promocionId ? String(item.promocionId) : undefined,
+            nombre: item.name || base.nombre,
+            cantidad: cantidadKg,
+            cantidadPacks: packs,
+            precioUnitario: puPromo,
+            medida: "pack",
+            subtotal: packs * puPromo,
+            madurez: "maduro",
+            esPromocion: true,
+            nombrePromocion: item.nombrePromocion || "Pack Familiar",
+            promocionKgMadura: kgPorPack,
+          },
+        ];
+      }
+
       const cantidad = Math.max(1, Math.floor(Number(item.cantidadKg ?? item.quantity)) || 1);
       const subtotalLinea = precioNum(item.price) * precioNum(item.quantity);
       return [
@@ -498,6 +661,10 @@ const HomePage = () => {
     }
 
     const total = productos.reduce((s, x) => s + x.subtotal, 0);
+    const montoDesc = descuentoAplicado?.ok
+      ? Number(descuentoAplicado.montoDescuento) || 0
+      : 0;
+    const totalConDescuento = Math.max(0, Math.round((total - montoDesc) * 100) / 100);
 
     const storedClient = localStorage.getItem("cliente_actual");
     let cliente = "Invitado";
@@ -521,7 +688,10 @@ const HomePage = () => {
       clienteTelefono,
       productos,
       subtotal: total,
-      total,
+      total: totalConDescuento,
+      ...(descuentoAplicado?.ok
+        ? { codigoDescuento: descuentoAplicado.codigo }
+        : {}),
       metodoPago: selectedPaymentMethod,
       comprobante: "Boleta",
       estado: "Pendiente",
@@ -584,10 +754,18 @@ const HomePage = () => {
         localStorage.setItem("cliente_pedidos", JSON.stringify(byClient));
 
         setCartItems([]);
+        vaciarCarritoStorage();
         setIsCartOpen(false);
+        setDescuentoAplicado(null);
+        setCodigoDescuentoInput("");
        toast.success("¡Pedido realizado con éxito! Se ha guardado en el sistema.");
         try {
           window.dispatchEvent(new Event("swgfsm-stock-actualizado"));
+          const resProd = await fetchWithAuth(API_URL_PRODUCTOS);
+          if (resProd.ok) {
+            const data = await resProd.json();
+            setProductosActivos(normalizarProductos(Array.isArray(data) ? data : []));
+          }
         } catch {
           /* ignore */
         }
@@ -605,7 +783,18 @@ const HomePage = () => {
   };
 
   const cartCount = cartItems.reduce((acc, item) => acc + item.quantity, 0);
-  const cartTotal = cartItems.reduce((acc, item) => acc + item.price * item.quantity, 0);
+  const cartSubtotal = cartItems.reduce((acc, item) => {
+    const q = Math.max(0, Math.floor(Number(item?.quantity)) || 0);
+    const p = Number(item?.price ?? item?.precioUnitario);
+    return acc + (Number.isFinite(p) ? p : 0) * q;
+  }, 0);
+  const cartDescuento = descuentoAplicado?.ok
+    ? Number(descuentoAplicado.montoDescuento) || 0
+    : 0;
+  const cartTotal = Math.max(
+    0,
+    Math.round((cartSubtotal - cartDescuento) * 100) / 100
+  );
 
   const productosFiltrados = productosActivos.filter((p) => {
     const matchCategoria = filterCategoria === "todos" || p.categoria === filterCategoria;
@@ -632,44 +821,45 @@ const HomePage = () => {
 
   const promoCards = useMemo(() => {
     const list = productosActivos.filter((p) => precioNum(p.precioVenta) > 0);
-    const pickFuerte =
-      list.find((p) => categoriaCatalogo(p) === "fuerte") ||
-      list.find((p) => String(p.nombre || "").toLowerCase().includes("fuerte")) ||
-      null;
-    const pickHass =
-      list.find((p) => categoriaCatalogo(p) === "hass") ||
-      list.find((p) => String(p.nombre || "").toLowerCase().includes("hass")) ||
-      null;
-    const pickSelva =
-      list.find((p) => categoriaCatalogo(p) === "selva") ||
-      list.find((p) => String(p.nombre || "").toLowerCase().includes("selva")) ||
-      null;
-    return [
-      {
-        slot: 0,
-        img: paltaFuerte,
-        imagenPromo: packPaltaFuerte,
-        etiqueta: "PALTA FUERTE",
-        precioFijo: 9,
-        product: pickFuerte,
-      },
-      {
-        slot: 1,
-        img: paltaHassVerde,
-        imagenPromo: packPaltaHass,
-        etiqueta: "PALTA HASS",
-        precioFijo: null,
-        product: pickHass,
-      },
-      {
-        slot: 2,
-        img: paltaSelva,
-        etiqueta: "PALTA DE LA SELVA",
-        precioFijo: null,
-        product: pickSelva,
-      },
+    const findCatalogo = (variedad, slug) => {
+      const vLower = variedad.toLowerCase();
+      return (
+        list.find((p) => categoriaCatalogo(p) === slug) ||
+        list.find((p) => String(p.tipo || "").toLowerCase() === vLower) ||
+        list.find((p) => String(p.nombre || "").toLowerCase().includes(slug)) ||
+        null
+      );
+    };
+    const findPromo = (variedad) =>
+      promociones.find(
+        (pr) =>
+          promocionEstaActiva(pr) &&
+          String(pr.variedad || "")
+            .trim()
+            .toLowerCase() === variedad.toLowerCase(),
+      ) || null;
+
+    const imgsPromo = { fuerte: packPaltaFuerte, hass: packPaltaHass };
+    const slots = [
+      { slot: 0, img: paltaFuerte, imagenPromo: packPaltaFuerte, variedad: "Fuerte", slug: "fuerte" },
+      { slot: 1, img: paltaHassVerde, imagenPromo: packPaltaHass, variedad: "Hass", slug: "hass" },
+      { slot: 2, img: paltaHall, variedad: "Hall", slug: "hall" },
     ];
-  }, [productosActivos]);
+    return slots.map(({ slot, img, imagenPromo, variedad, slug }) => {
+      const promocion = findPromo(variedad);
+      const productoStock = findCatalogo(variedad, slug);
+      return {
+        slot,
+        img,
+        imagenPromo:
+          imagenPromo ||
+          (productoStock ? imagenPromoPorTipo(productoStock, imgsPromo) : null),
+        etiqueta: `PALTA ${variedad.toUpperCase()}`,
+        promocion,
+        productoStock,
+      };
+    });
+  }, [productosActivos, promociones]);
 
   return (
     <div className="min-h-screen bg-white">
@@ -733,7 +923,7 @@ const HomePage = () => {
                 <button
                   type="button"
                   onClick={() => {
-                    const el = document.getElementById("catalogo-productos");
+                    const el = document.getElementById("catalogo-destacado");
                     el?.scrollIntoView({ behavior: "smooth" });
                   }}
                   className="bg-[#006241] font-semibold text-white shadow-lg transition-all duration-300 hover:bg-[#004d33] hover:shadow-xl transform hover:scale-105 rounded-full px-8 py-3"
@@ -743,7 +933,7 @@ const HomePage = () => {
                 <button
                   type="button"
                   onClick={() => {
-                    const el = document.getElementById("catalogo-destacado");
+                    const el = document.getElementById("pack-familiar");
                     el?.scrollIntoView({ behavior: "smooth" });
                   }}
                   className="rounded-full border-2 border-[#006241] px-8 py-3 font-semibold text-[#006241] transition-all duration-300 hover:bg-[#006241]/10"
@@ -848,6 +1038,103 @@ const HomePage = () => {
         </div>
       </section>
 
+      <section id="pack-familiar" className="py-20 relative overflow-hidden scroll-mt-24">
+        <div className="absolute inset-0 bg-gradient-to-r from-[#006241] to-[#1e3932]"></div>
+        <div className="absolute inset-0 opacity-10">
+          <div className="absolute top-10 left-10 w-40 h-40 bg-white rounded-full"></div>
+          <div className="absolute bottom-10 right-10 w-60 h-60 bg-white rounded-full"></div>
+        </div>
+
+        <div className="relative max-w-7xl mx-auto px-6">
+          <div className="text-center mb-12 sm:mb-16 md:mb-20">
+            <h2 className="text-3xl lg:text-4xl font-bold text-white mb-2">
+              31 de julio Día Internacional de la Palta
+            </h2>
+            <p className="max-w-4xl mx-auto text-lg text-[#d4e9e2]">
+              Todos los dias celebramos el placer de una buena palta
+              <br />
+              <span className="block mt-4 sm:mt-5 text-3xl sm:text-4xl font-bold leading-tight tracking-tight px-1">
+                POR ESO TRAEMOS ESTAS PROMOCIONES PARA TI
+              </span>
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8 pt-2 md:pt-6">
+            {promoCards.map(({ slot, img, imagenPromo, etiqueta, promocion, productoStock }) => {
+              const promoActiva = promocion && promocionEstaActiva(promocion);
+              const precioPack = promocion ? precioPackPromocion(promocion) : NaN;
+              const kgPack = promocion ? roundKg(kgMaduraPackPromocion(promocion)) : null;
+              const precioOk = promoActiva && Number.isFinite(precioPack) && precioPack > 0;
+              return (
+                <div
+                  key={slot}
+                  className="transform bg-white rounded-2xl p-6 text-center shadow-xl transition-all duration-300 hover:scale-105"
+                >
+                  <div
+                    className={`mx-auto mb-4 flex items-center justify-center rounded-2xl bg-gradient-to-b from-amber-100 to-amber-200/90 p-2 shadow-inner ring-2 ring-amber-800/20 ${
+                      imagenPromo ? "h-36 w-full max-w-[220px]" : "h-28 w-28"
+                    }`}
+                    aria-hidden
+                  >
+                    {imagenPromo ? (
+                      <img
+                        src={imagenPromo}
+                        alt={etiqueta}
+                        className="h-full w-full object-contain drop-shadow-md"
+                      />
+                    ) : (
+                      <div className="grid grid-cols-2 gap-1 rounded-md bg-amber-50/80 p-1.5 shadow-sm">
+                        {[0, 1, 2, 3].map((i) => (
+                          <img
+                            key={i}
+                            src={img}
+                            alt=""
+                            className="h-10 w-10 object-contain drop-shadow-sm"
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <h3 className="text-xl font-bold tracking-tight text-gray-900">PACK FAMILIAR</h3>
+                  <p className="mt-1 text-lg font-bold uppercase tracking-tight text-gray-800">
+                    {etiqueta}
+                  </p>
+                  <div className="mt-4">
+                    <span className="text-3xl font-bold text-[#006241]">
+                      {precioOk ? `S/ ${precioPack.toFixed(2)}` : "S/ —"}
+                    </span>
+                    {precioOk && kgPack != null && (
+                      <p className="mt-1 text-sm font-semibold text-gray-600">
+                        {kgPack} kg maduro / pack
+                      </p>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    disabled={!promocion || !precioOk}
+                    onClick={() =>
+                      promocion &&
+                      setSelectedPromocion({
+                        promocion,
+                        productoStock,
+                        imagenPromo: imagenPromo || null,
+                      })
+                    }
+                    className={`mt-5 w-full rounded-full py-2.5 font-semibold transition-all duration-300 ${
+                      promocion && precioOk
+                        ? "bg-[#006241] text-white hover:bg-[#004d33]"
+                        : "cursor-not-allowed bg-gray-200 text-gray-500"
+                    }`}
+                  >
+                    {precioOk ? "Ver promoción" : "Promoción no activa"}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
       <section className="border-t border-[#d4e9e2]/80 bg-gradient-to-b from-white via-[#eef7f3]/95 to-white py-18 lg:py-24">
         <div className="mx-auto max-w-7xl px-6">
           <div className="flex flex-col gap-10">
@@ -947,7 +1234,7 @@ const HomePage = () => {
 
       <section
         id="catalogo-destacado"
-        className="border-y border-[#d4e9e2]/90 bg-gradient-to-b from-[#eef7f3]/90 via-white to-[#f6f4ef]/80 py-16 lg:py-24"
+        className="scroll-mt-24 border-y border-[#d4e9e2]/90 bg-gradient-to-b from-[#eef7f3]/90 via-white to-[#f6f4ef]/80 py-16 lg:py-24"
       >
         <div className="mx-auto max-w-7xl px-4 sm:px-6">
           <div className="mb-10 border-b border-[#006241]/15 pb-10 text-center sm:text-left">
@@ -983,18 +1270,14 @@ const HomePage = () => {
                     />
                   </div>
                   <div className="flex flex-1 flex-col border-t border-[#d4e9e2]/90 p-4 sm:p-5">
-                    <div className="flex items-start justify-between gap-2">
-                      <h3 className="line-clamp-2 text-lg font-bold leading-snug text-slate-900">
-                        {tituloConTipo(product)}
-                      </h3>
-                      <div className="flex shrink-0 items-center gap-0.5 text-amber-500" aria-hidden>
-                        <span className="text-base">★</span>
-                        <span className="text-sm font-semibold text-slate-600">{product.rating}</span>
-                      </div>
-                    </div>
-                    <p className="mt-3 line-clamp-3 text-sm leading-snug text-slate-700 sm:text-base">
-                      {product.descripcionCorta}
-                    </p>
+                    <h3 className="line-clamp-2 text-lg font-bold leading-snug text-slate-900">
+                      {tituloConTipo(product)}
+                    </h3>
+                    {product.descripcionCorta ? (
+                      <p className="mt-3 line-clamp-3 text-sm leading-snug text-slate-700 sm:text-base">
+                        {product.descripcionCorta}
+                      </p>
+                    ) : null}
                     <div className="mt-auto flex items-baseline gap-1 border-t border-[#eef7f3] pt-4">
                       <span className="text-xl font-bold tabular-nums text-[#006241]">
                         S/ {product.precio.toFixed(2)}
@@ -1013,94 +1296,6 @@ const HomePage = () => {
               ))}
             </div>
           )}
-        </div>
-      </section>
-
-      <section className="py-20 relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-r from-[#006241] to-[#1e3932]"></div>
-        <div className="absolute inset-0 opacity-10">
-          <div className="absolute top-10 left-10 w-40 h-40 bg-white rounded-full"></div>
-          <div className="absolute bottom-10 right-10 w-60 h-60 bg-white rounded-full"></div>
-        </div>
-
-        <div className="relative max-w-7xl mx-auto px-6">
-          <div className="text-center mb-12 sm:mb-16 md:mb-20">
-            <h2 className="text-3xl lg:text-4xl font-bold text-white mb-2">
-              31 de julio Día Internacional de la Palta
-            </h2>
-            <p className="max-w-4xl mx-auto text-lg text-[#d4e9e2]">
-              Todos los dias celebramos el placer de una buena palta
-              <br />
-              <span className="block mt-4 sm:mt-5 text-3xl sm:text-4xl font-bold leading-tight tracking-tight px-1">
-                POR ESO TRAEMOS ESTAS PROMOCIONES PARA TI
-              </span>
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8 pt-2 md:pt-6">
-            {promoCards.map(({ slot, img, imagenPromo, etiqueta, precioFijo, product }) => {
-              const precioPack =
-                precioFijo != null
-                  ? precioFijo
-                  : product
-                    ? precioNum(product.precioVenta ?? product.precio)
-                    : NaN;
-              const precioOk = Number.isFinite(precioPack) && precioPack > 0;
-              return (
-                <div
-                  key={slot}
-                  className="transform bg-white rounded-2xl p-6 text-center shadow-xl transition-all duration-300 hover:scale-105"
-                >
-                  <div
-                    className={`mx-auto mb-4 flex items-center justify-center rounded-2xl bg-gradient-to-b from-amber-100 to-amber-200/90 p-2 shadow-inner ring-2 ring-amber-800/20 ${
-                      imagenPromo ? "h-36 w-full max-w-[220px]" : "h-28 w-28"
-                    }`}
-                    aria-hidden
-                  >
-                    {imagenPromo ? (
-                      <img
-                        src={imagenPromo}
-                        alt={etiqueta}
-                        className="h-full w-full object-contain drop-shadow-md"
-                      />
-                    ) : (
-                      <div className="grid grid-cols-2 gap-1 rounded-md bg-amber-50/80 p-1.5 shadow-sm">
-                        {[0, 1, 2, 3].map((i) => (
-                          <img
-                            key={i}
-                            src={img}
-                            alt=""
-                            className="h-10 w-10 object-contain drop-shadow-sm"
-                          />
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                  <h3 className="text-xl font-bold tracking-tight text-gray-900">PACK FAMILIAR</h3>
-                  <p className="mt-1 text-lg font-bold uppercase tracking-tight text-gray-800">
-                    {etiqueta}
-                  </p>
-                  <div className="mt-4">
-                    <span className="text-3xl font-bold text-[#006241]">
-                      {precioOk ? `S/ ${precioPack.toFixed(2)}` : "S/ —"}
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    disabled={!product}
-                    onClick={() => product && setSelectedProduct(product)}
-                    className={`mt-5 w-full rounded-full py-2.5 font-semibold transition-all duration-300 ${
-                      product
-                        ? "bg-[#006241] text-white hover:bg-[#004d33]"
-                        : "cursor-not-allowed bg-gray-200 text-gray-500"
-                    }`}
-                  >
-                    Ver producto
-                  </button>
-                </div>
-              );
-            })}
-          </div>
         </div>
       </section>
 
@@ -1301,6 +1496,11 @@ const HomePage = () => {
                     />
                   </div>
                   <h3 className="font-semibold text-gray-900 text-sm">{tituloConTipo(product)}</h3>
+                  {product.descripcionCorta ? (
+                    <p className="mt-2 line-clamp-3 text-left text-xs leading-snug text-gray-600 sm:text-sm">
+                      {product.descripcionCorta}
+                    </p>
+                  ) : null}
                   <div className="mt-3">
                     <span className="text-xl font-bold text-[#006241]">
                       S/ {product.precio.toFixed(2)}
@@ -1373,13 +1573,30 @@ const HomePage = () => {
         />
       )}
 
+      {selectedPromocion && (
+        <PromocionDetail
+          promocion={selectedPromocion.promocion}
+          productoStock={selectedPromocion.productoStock}
+          imagenPromo={selectedPromocion.imagenPromo}
+          onClose={() => setSelectedPromocion(null)}
+          onAddToCart={handleAddToCart}
+        />
+      )}
+
       <CartSidebar
         isOpen={isCartOpen}
         items={cartItems}
         onClose={() => setIsCartOpen(false)}
         onCheckout={handleCheckout}
         onRemoveItem={handleRemoveCartItem}
+        subtotal={cartSubtotal}
         total={cartTotal}
+        descuentoAplicado={descuentoAplicado}
+        codigoDescuentoInput={codigoDescuentoInput}
+        onCodigoChange={setCodigoDescuentoInput}
+        onAplicarCodigo={handleAplicarCodigoDescuento}
+        onQuitarCodigo={handleQuitarCodigoDescuento}
+        productosCatalogo={productosActivos}
       />
 
       {showPayment && (
@@ -1390,6 +1607,8 @@ const HomePage = () => {
           onMethodSelect={setSelectedPaymentMethod}
         />
       )}
+
+      <PromocionDescuentoPopup productos={productosActivos} />
 
       <style>{`
         @keyframes float {

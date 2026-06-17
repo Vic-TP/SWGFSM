@@ -53,6 +53,10 @@ const ventaSchema = new mongoose.Schema({
     required: true,
     min: 0
   },
+  /** Descuento por código (solo ventas ONLINE, palta madura) */
+  codigoDescuento: { type: String, required: false, trim: true },
+  montoDescuento: { type: Number, required: false, min: 0, default: 0 },
+  descuentoPorcentaje: { type: Number, required: false, min: 0, max: 100 },
   metodoPago: {
     type: String,
     enum: ['tarjeta', 'yape', 'plin', 'transferencia', 'efectivo'],

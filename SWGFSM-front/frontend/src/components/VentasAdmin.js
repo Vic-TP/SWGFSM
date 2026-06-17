@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from "react";
 import { nombreLineaVenta, mergeTipoLineaDesdeCatalogo } from "../utils/tiendaProducto";
+import { descuentoVentaDetalle, etiquetaDescuentoVenta } from "../utils/ventaDescuento";
 
 const API_URL_VENTAS = "http://localhost:5000/api/ventas";
 const API_URL_PRODUCTOS = "http://localhost:5000/api/producto";
@@ -47,6 +48,39 @@ const VentasAdmin = () => {
   const etiquetaProductoVenta = (line) =>
     nombreLineaVenta(mergeTipoLineaDesdeCatalogo(line, productoPorId));
 
+  const renderResumenPago = (venta) => {
+    const desc = descuentoVentaDetalle(venta);
+    const sub = Number(venta?.subtotal ?? venta?.total ?? 0);
+    const tot = Number(venta?.total ?? 0);
+    return (
+      <div className="rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50/90 to-lime-50/80 p-4">
+        <p className="text-xs font-bold uppercase tracking-wide text-emerald-800 mb-3">
+          Resumen de pago
+        </p>
+        <div className="space-y-2 text-sm">
+          <div className="flex justify-between gap-4">
+            <span className="text-gray-600">Subtotal</span>
+            <span className="font-semibold text-gray-900 tabular-nums">
+              S/ {sub.toFixed(2)}
+            </span>
+          </div>
+          {desc && (
+            <div className="flex justify-between gap-4 text-emerald-700">
+              <span>{etiquetaDescuentoVenta(desc)}</span>
+              <span className="font-semibold tabular-nums">− S/ {desc.monto.toFixed(2)}</span>
+            </div>
+          )}
+          <div className="flex justify-between gap-4 border-t border-emerald-200/80 pt-2 text-base">
+            <span className="font-bold text-gray-900">Total</span>
+            <span className="font-extrabold text-emerald-800 tabular-nums">
+              S/ {tot.toFixed(2)}
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   /** CAJA = trabajador en caja; ONLINE = cliente compró en la web */
   const etiquetaOrigen = (venta) => {
     if (venta.origen === "CAJA") return "Caja registradora";
@@ -76,19 +110,27 @@ const VentasAdmin = () => {
   const fetchVentas = async () => {
     try {
       setLoading(true);
-      console.log("Cargando ventas desde:", API_URL_VENTAS);
       const response = await fetchWithAuth(API_URL_VENTAS);
+
+      if (response.status === 401) {
+        const data = await response.json().catch(() => ({}));
+        alert(data.message || "Sesión expirada. Vuelve a iniciar sesión.");
+        sessionStorage.removeItem("auth_token");
+        sessionStorage.removeItem("user_profile");
+        window.location.href = "/login-trabajador";
+        return;
+      }
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
       const data = await response.json();
-      console.log("Ventas cargadas:", data);
-      setVentas(data);
+      setVentas(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error("Error al cargar ventas:", error);
-      alert("No se pudieron cargar las ventas. Verifica el backend.");
+      setVentas([]);
+      alert("No se pudieron cargar las ventas. Verifica que el backend esté en marcha.");
     } finally {
       setLoading(false);
     }
@@ -385,6 +427,12 @@ const VentasAdmin = () => {
                   Origen
                 </th>
                 <th className="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase">
+                  Subtotal
+                </th>
+                <th className="px-6 py-3 text-center text-xs font-semibold text-gray-500 uppercase">
+                  Descuento
+                </th>
+                <th className="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase">
                   Total
                 </th>
                 <th className="px-6 py-3 text-center text-xs font-semibold text-gray-500 uppercase">
@@ -402,7 +450,7 @@ const VentasAdmin = () => {
               {loading ? (
                 <tr>
                   <td
-                    colSpan="9"
+                    colSpan="11"
                     className="px-6 py-8 text-center text-gray-400"
                   >
                     Cargando...
@@ -411,7 +459,7 @@ const VentasAdmin = () => {
               ) : ventasFiltradas.length === 0 ? (
                 <tr>
                   <td
-                    colSpan="9"
+                    colSpan="11"
                     className="px-6 py-8 text-center text-gray-400"
                   >
                     No hay ventas registradas
@@ -469,7 +517,24 @@ const VentasAdmin = () => {
                         <option value="ONLINE">Pedido web</option>
                       </select>
                     </td>
-                    <td className="px-6 py-3 text-right font-semibold text-emerald-700">
+                    <td className="px-6 py-3 text-right text-gray-700 tabular-nums">
+                      S/ {(venta.subtotal ?? venta.total ?? 0).toFixed(2)}
+                    </td>
+                    <td className="px-6 py-3 text-center text-xs">
+                      {(() => {
+                        const d = descuentoVentaDetalle(venta);
+                        if (!d) return <span className="text-gray-400">—</span>;
+                        return (
+                          <span
+                            className="inline-block rounded-full bg-emerald-100 px-2 py-0.5 font-semibold text-emerald-800"
+                            title={etiquetaDescuentoVenta(d)}
+                          >
+                            {d.codigo || "Desc."} − S/ {d.monto.toFixed(2)}
+                          </span>
+                        );
+                      })()}
+                    </td>
+                    <td className="px-6 py-3 text-right font-semibold text-emerald-700 tabular-nums">
                       S/ {venta.total?.toFixed(2)}
                     </td>
                     <td className="px-6 py-3 text-center capitalize text-gray-600">
@@ -603,10 +668,27 @@ const VentasAdmin = () => {
                     </span>
                   </p>
                   <p className="text-sm text-gray-700 mt-2">
-                    Total:{" "}
-                    <span className="font-extrabold text-emerald-700">
-                      S/ {(ventaDetalle.total || 0).toFixed(2)}
-                    </span>
+                    {(() => {
+                      const d = descuentoVentaDetalle(ventaDetalle);
+                      if (!d) {
+                        return (
+                          <>
+                            Total:{" "}
+                            <span className="font-extrabold text-emerald-700">
+                              S/ {(ventaDetalle.total || 0).toFixed(2)}
+                            </span>
+                          </>
+                        );
+                      }
+                      return (
+                        <span className="text-emerald-800">
+                          {etiquetaDescuentoVenta(d)} — Total{" "}
+                          <span className="font-extrabold">
+                            S/ {(ventaDetalle.total || 0).toFixed(2)}
+                          </span>
+                        </span>
+                      );
+                    })()}
                   </p>
                   {etiquetaEntrega(ventaDetalle) && (
                     <p className="text-sm text-gray-700 mt-2">
@@ -673,18 +755,10 @@ const VentasAdmin = () => {
                 </div>
               </div>
 
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="text-sm text-gray-600">
-                  Subtotal:{" "}
-                  <span className="font-semibold">
-                    S/ {(ventaDetalle.subtotal || 0).toFixed(2)}
-                  </span>{" "}
-                  · Total:{" "}
-                  <span className="font-extrabold text-emerald-700">
-                    S/ {(ventaDetalle.total || 0).toFixed(2)}
-                  </span>
-                </div>
-                <div className="flex flex-wrap gap-2 justify-end">
+              {renderResumenPago(ventaDetalle)}
+
+              <div className="flex flex-wrap items-center justify-end gap-3">
+                <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
                     onClick={refrescarInventarioYDetalle}

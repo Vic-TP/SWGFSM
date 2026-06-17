@@ -1,6 +1,8 @@
 // Middleware para verificar JWT en rutas protegidas
 const jwt = require("jsonwebtoken");
 
+const JWT_SECRET = process.env.JWT_SECRET || "default-secret-key";
+
 const verifyJWT = (req, res, next) => {
   try {
     const authHeader = req.headers["authorization"];
@@ -18,7 +20,7 @@ const verifyJWT = (req, res, next) => {
     if (token.endsWith("mock-signature")) { //USADO SOLO PARA maria@muruhuay.com SI SE ELIMINA EL USUARIO, ELIMINAR ESTA PARTE DE MOCK-SIGNATURE
       decoded = jwt.decode(token);
     } else {
-      decoded = jwt.verify(token, process.env.JWT_SECRET);
+      decoded = jwt.verify(token, JWT_SECRET);
     }
 
     req.user = decoded;

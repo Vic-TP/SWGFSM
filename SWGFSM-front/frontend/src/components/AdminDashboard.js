@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import PropTypes from "prop-types";
 import * as XLSX from "xlsx";
 import ProveedoresTable from "./ProveedoresTable";
@@ -11,15 +11,22 @@ import PrediccionChartsPanel, {
   normalizeInventarioML,
 } from "../predict/PrediccionCharts";
 import PasswordInput from "./PasswordInput";
-import { nombreLineaVenta } from "../utils/tiendaProducto";
+import {
+  nombreLineaVenta,
+  productoCatalogoPorVariedad,
+} from "../utils/tiendaProducto";
+import { descuentoVentaDetalle } from "../utils/ventaDescuento";
 import { Toaster, toast } from "sonner";
 
 const API_URL_PRODUCTOS = "http://localhost:5000/api/producto";
+const API_URL_PROMOCIONES = "http://localhost:5000/api/promociones";
 const API_URL_INVENTARIO = "http://localhost:5000/api/inventario";
 const API_URL_CLIENTES = "http://localhost:5000/api/clientes";
 const API_URL_EMPLEADOS = "http://localhost:5000/api/empleados";
 const API_URL_VENTAS = "http://localhost:5000/api/ventas";
 const API_URL_PREDICCION = "http://localhost:5000/api/prediccion";
+
+const VARIEDADES_PALTA = ["Fuerte", "Hass", "Hall", "Naval"];
 
 const getAuthToken = () => {
   return sessionStorage.getItem("auth_token");
@@ -184,8 +191,15 @@ const ventasToXlsxRows = (rows) =>
     return {
       numeroVenta: v.numeroVenta ?? "",
       fechaISO: fv.toISOString(),
-      total: Number(Number(v.total || 0).toFixed(2)),
       subtotal: Number(Number(v.subtotal ?? v.total ?? 0).toFixed(2)),
+      codigoDescuento: v.codigoDescuento ?? "",
+      descuentoPorcentaje:
+        v.descuentoPorcentaje != null ? Number(v.descuentoPorcentaje) : "",
+      montoDescuento: (() => {
+        const d = descuentoVentaDetalle(v);
+        return d ? Number(d.monto.toFixed(2)) : 0;
+      })(),
+      total: Number(Number(v.total || 0).toFixed(2)),
       estado: v.estado ?? "",
       origen: v.origen ?? "",
       metodoPago: v.metodoPago ?? "",
@@ -263,10 +277,12 @@ const AdminDashboard = () => {
 
   const [showEmpleadoModal, setShowEmpleadoModal] = useState(false);
   const [showProductoModal, setShowProductoModal] = useState(false);
+  const [showPromocionModal, setShowPromocionModal] = useState(false);
   const [showRegistroInventarioModal, setShowRegistroInventarioModal] =
     useState(false);
 
   const [productos, setProductos] = useState([]);
+  const [promociones, setPromociones] = useState([]);
   const [inventario, setInventario] = useState([]);
 
   const [modoEditarProducto, setModoEditarProducto] = useState(false);
@@ -282,8 +298,22 @@ const AdminDashboard = () => {
     tamano: "",
     descripcion: "",
     estado: "ACTIVO",
+    codigoDescuento: "",
+    descuentoEstado: "INACTIVO",
+    descuentoPorcentaje: "15",
   });
   const [productoActual, setProductoActual] = useState(emptyProductoForm);
+
+  const emptyPromocionForm = () => ({
+    variedad: "",
+    estado: "ACTIVO",
+    nombre: "Pack Familiar",
+    precio: "",
+    descripcion: "",
+    kgMadura: "1",
+  });
+  const [promocionActual, setPromocionActual] = useState(emptyPromocionForm);
+  const [modoEditarPromocion, setModoEditarPromocion] = useState(false);
 
   const [nuevoInventario, setNuevoInventario] = useState({
     fecha: "",
@@ -360,7 +390,10 @@ const AdminDashboard = () => {
   }, [selectedSection]);
 
   useEffect(() => {
-    if (selectedSection === "productos") fetchProductos();
+    if (selectedSection === "productos") {
+      fetchProductos();
+      fetchPromociones();
+    }
     if (selectedSection === "inventario") fetchInventario();
     if (selectedSection === "usuarios") fetchUsuarios();
     if (selectedSection === "dashboard") fetchDashboardData();
@@ -473,14 +506,19 @@ const AdminDashboard = () => {
       const ultimasVentas = [...ventasArr]
         .sort((a, b) => fechaVenta(b) - fechaVenta(a))
         .slice(0, 8)
-        .map((v) => ({
-          id: v._id,
-          numero: v.numeroVenta,
-          fecha: fechaVenta(v),
-          total: Number(v.total || 0),
-          estado: v.estado || "—",
-          origen: v.origen || "—",
-        }));
+        .map((v) => {
+          const d = descuentoVentaDetalle(v);
+          return {
+            id: v._id,
+            numero: v.numeroVenta,
+            fecha: fechaVenta(v),
+            subtotal: Number(v.subtotal ?? v.total ?? 0),
+            total: Number(v.total || 0),
+            descuento: d,
+            estado: v.estado || "—",
+            origen: v.origen || "—",
+          };
+        });
 
       setDash({
         loading: false,
@@ -619,6 +657,18 @@ const AdminDashboard = () => {
     }
   };
 
+  const fetchPromociones = async () => {
+    try {
+      const r = await fetchWithAuth(API_URL_PROMOCIONES);
+      if (!r.ok) throw new Error(String(r.status));
+      const data = await r.json();
+      setPromociones(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.error(e);
+      setPromociones([]);
+    }
+  };
+
   const fetchProductos = async () => {
     try {
       console.log("Fetching desde:", API_URL_PRODUCTOS);
@@ -638,9 +688,22 @@ const AdminDashboard = () => {
   const fetchInventario = async () => {
     try {
       const r = await fetchWithAuth(API_URL_INVENTARIO);
-      setInventario(await r.json());
+      const data = await r.json().catch(() => null);
+      if (!r.ok) {
+        if (r.status === 401) {
+          toast.error(data?.message || "Sesión expirada. Inicia sesión de nuevo.");
+          sessionStorage.removeItem("auth_token");
+          sessionStorage.removeItem("user_profile");
+          window.location.href = "/login-trabajador";
+          return;
+        }
+        throw new Error(data?.message || `HTTP ${r.status}`);
+      }
+      setInventario(Array.isArray(data) ? data : []);
     } catch (e) {
       console.error(e);
+      setInventario([]);
+      toast.error("No se pudo cargar el inventario. Verifica que el backend esté en marcha.");
     }
   };
 
@@ -654,8 +717,36 @@ const AdminDashboard = () => {
       window.removeEventListener("swgfsm-stock-actualizado", onStock);
   }, [selectedSection]);
 
-  const handleChangeProducto = (e) =>
-    setProductoActual((p) => ({ ...p, [e.target.name]: e.target.value }));
+  const productoCatalogoPorVariedadPromo = useMemo(() => {
+    const map = new Map();
+    for (const v of VARIEDADES_PALTA) {
+      map.set(v, productoCatalogoPorVariedad(productos, v));
+    }
+    return map;
+  }, [productos]);
+
+  const variedadesPromoPermitidas = useMemo(
+    () =>
+      VARIEDADES_PALTA.filter((v) => productoCatalogoPorVariedadPromo.get(v)),
+    [productoCatalogoPorVariedadPromo],
+  );
+
+  const handleChangeProducto = (e) => {
+    const { name, value, type, checked } = e.target;
+    setProductoActual((p) => ({
+      ...p,
+      [name]: type === "checkbox" ? checked : value,
+    }));
+  };
+
+  const handleChangePromocion = (e) => {
+    const { name, value } = e.target;
+    if (name === "estado") {
+      setPromocionActual((p) => ({ ...p, estado: value }));
+      return;
+    }
+    setPromocionActual((p) => ({ ...p, [name]: value }));
+  };
   const handleChangeInventario = (e) =>
     setNuevoInventario((p) => ({ ...p, [e.target.name]: e.target.value }));
 
@@ -669,6 +760,20 @@ const AdminDashboard = () => {
     stockPaltaSazon: p.stockPaltaSazon ?? "",
     detalle: p.detalle ?? "",
     tamano: p.tamano ?? "",
+    codigoDescuento: p.codigoDescuento ?? "",
+    descuentoEstado: p.descuentoEstado ?? "INACTIVO",
+    descuentoPorcentaje: p.descuentoPorcentaje ?? "15",
+  });
+
+  const mapPromocionToForm = (p) => ({
+    ...emptyPromocionForm(),
+    _id: p._id,
+    variedad: p.variedad ?? "",
+    estado: p.estado ?? "ACTIVO",
+    nombre: p.nombre ?? "Pack Familiar",
+    precio: p.precio ?? "",
+    descripcion: p.descripcion ?? "",
+    kgMadura: p.kgMadura ?? "1",
   });
 
   const abrirModalNuevoProducto = () => {
@@ -680,6 +785,24 @@ const AdminDashboard = () => {
     setModoEditarProducto(true);
     setProductoActual(mapProductoToForm(p));
     setShowProductoModal(true);
+  };
+
+  const abrirModalNuevaPromocion = () => {
+    if (variedadesPromoPermitidas.length === 0) {
+      alert(
+        "No hay variedades disponibles en el Listado de productos. Registra primero al menos un producto activo (Fuerte, Hass, Hall o Naval).",
+      );
+      return;
+    }
+    setModoEditarPromocion(false);
+    setPromocionActual(emptyPromocionForm());
+    setShowPromocionModal(true);
+  };
+
+  const abrirModalEditarPromocion = (p) => {
+    setModoEditarPromocion(true);
+    setPromocionActual(mapPromocionToForm(p));
+    setShowPromocionModal(true);
   };
 
   const handleSubmitProducto = async (e) => {
@@ -700,6 +823,24 @@ const AdminDashboard = () => {
       tamano: String(productoActual.tamano || "").trim(),
       descripcion: String(productoActual.descripcion || "").trim(),
       estado: productoActual.estado || "ACTIVO",
+      codigoDescuento: String(productoActual.codigoDescuento || "")
+        .trim()
+        .toUpperCase(),
+      descuentoEstado:
+        String(productoActual.descuentoEstado || "INACTIVO").toUpperCase() ===
+        "ACTIVO"
+          ? "ACTIVO"
+          : "INACTIVO",
+      descuentoPorcentaje: Math.min(
+        100,
+        Math.max(0, num(productoActual.descuentoPorcentaje, 15)),
+      ),
+      promocionActiva: false,
+      promocionVariedad: "",
+      promocionNombre: "Pack Familiar",
+      promocionPrecio: 0,
+      promocionDescripcion: "",
+      promocionKgMadura: 1,
     };
     if (!payload.nombre) {
       alert("El nombre del producto es obligatorio.");
@@ -725,6 +866,132 @@ const AdminDashboard = () => {
     }
   };
 
+  const handleSubmitPromocion = async (e) => {
+    e.preventDefault();
+    const num = (v, d = 0) => {
+      const n = Number(v);
+      return Number.isFinite(n) ? n : d;
+    };
+    const payload = {
+      nombre: String(promocionActual.nombre || "Pack Familiar").trim() || "Pack Familiar",
+      variedad: String(promocionActual.variedad || "").trim(),
+      precio: num(promocionActual.precio),
+      kgMadura: Math.max(0.01, num(promocionActual.kgMadura, 1)),
+      descripcion: String(promocionActual.descripcion || "").trim(),
+      estado:
+        String(promocionActual.estado || "ACTIVO").toUpperCase() === "INACTIVO"
+          ? "INACTIVO"
+          : "ACTIVO",
+    };
+    if (!payload.variedad) {
+      alert("Selecciona la variedad de palta.");
+      return;
+    }
+    if (payload.precio <= 0) {
+      alert("Indica un precio de pack mayor a 0.");
+      return;
+    }
+    const prodCatalogo = productoCatalogoPorVariedad(productos, payload.variedad);
+    if (!prodCatalogo) {
+      alert(
+        `No puedes registrar el pack: la variedad "${payload.variedad}" no está en el Listado de productos (activo). Añádela primero en la tabla de arriba.`,
+      );
+      return;
+    }
+    try {
+      const method = modoEditarPromocion ? "PUT" : "POST";
+      const url = modoEditarPromocion
+        ? `${API_URL_PROMOCIONES}/${promocionActual._id}`
+        : API_URL_PROMOCIONES;
+      const res = await fetchWithAuth(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (res.ok) {
+        fetchPromociones();
+        setShowPromocionModal(false);
+        alert("Promoción guardada.");
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(err.message || "Error al guardar la promoción.");
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const eliminarPromocion = async (p) => {
+    if (!p?._id) return;
+    if (
+      !window.confirm(
+        `¿Eliminar la promoción "${p.nombre || "Pack Familiar"}" (${p.variedad})?`,
+      )
+    )
+      return;
+    try {
+      const res = await fetchWithAuth(`${API_URL_PROMOCIONES}/${p._id}`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        if (showPromocionModal && promocionActual._id === p._id) {
+          setShowPromocionModal(false);
+        }
+        fetchPromociones();
+        alert("Promoción eliminada.");
+      } else alert("No se pudo eliminar la promoción.");
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const cambiarEstadoDescuento = async (p) => {
+    if (!String(p.codigoDescuento || "").trim()) {
+      alert("Asigna un código de descuento al editar el producto primero.");
+      return;
+    }
+    const nuevo =
+      String(p.descuentoEstado || "INACTIVO").toUpperCase() === "ACTIVO"
+        ? "INACTIVO"
+        : "ACTIVO";
+    const num = (v, d = 0) => {
+      const n = Number(v);
+      return Number.isFinite(n) ? n : d;
+    };
+    try {
+      const res = await fetchWithAuth(`${API_URL_PRODUCTOS}/${p._id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          nombre: p.nombre,
+          tipo: p.tipo ?? p.categoriaId ?? "",
+          unidadMedida: p.unidadMedida || "kg",
+          precioVenta: num(p.precioVenta),
+          stockPaltaMadura: num(p.stockPaltaMadura),
+          stockPaltaVerde: num(p.stockPaltaVerde),
+          stockPaltaSazon: num(p.stockPaltaSazon),
+          detalle: p.detalle ?? "",
+          tamano: p.tamano ?? "",
+          descripcion: p.descripcion ?? "",
+          estado: p.estado || "ACTIVO",
+          codigoDescuento: String(p.codigoDescuento || "").trim().toUpperCase(),
+          descuentoEstado: nuevo,
+          descuentoPorcentaje: num(p.descuentoPorcentaje, 15),
+          promocionActiva: false,
+          promocionVariedad: "",
+          promocionNombre: "Pack Familiar",
+          promocionPrecio: 0,
+          promocionDescripcion: "",
+          promocionKgMadura: 1,
+        }),
+      });
+      if (res.ok) fetchProductos();
+      else alert("No se pudo cambiar el estado del descuento.");
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   const eliminarProducto = async (p) => {
     if (!p?._id) return;
     if (
@@ -740,6 +1007,9 @@ const AdminDashboard = () => {
       if (res.ok) {
         if (showProductoModal && productoActual._id === p._id) {
           setShowProductoModal(false);
+        }
+        if (showPromocionModal && promocionActual._id === p._id) {
+          setShowPromocionModal(false);
         }
         fetchProductos();
         alert("Producto eliminado.");
@@ -951,17 +1221,17 @@ const AdminDashboard = () => {
           label: "Pedidos pendientes",
           sub: "Estado Pendiente",
           value: fmtNum(dash.pedidosPendientes),
-          box: "bg-amber-50 border-amber-200",
-          lab: "text-amber-800",
-          val: "text-amber-950",
+          box: "bg-emerald-50 border-emerald-200",
+          lab: "text-emerald-700",
+          val: "text-emerald-900",
         },
         {
           label: "Productos activos",
           sub: "Catálogo tienda",
           value: fmtNum(dash.productosActivos),
-          box: "bg-lime-50 border-lime-200",
-          lab: "text-lime-800",
-          val: "text-lime-950",
+          box: "bg-emerald-50 border-emerald-200",
+          lab: "text-emerald-700",
+          val: "text-emerald-900",
         },
         {
           label: "Stock bajo",
@@ -975,9 +1245,9 @@ const AdminDashboard = () => {
           label: "Clientes registrados",
           sub: "En base de datos",
           value: fmtNum(dash.clientesCount),
-          box: "bg-sky-50 border-sky-200",
-          lab: "text-sky-800",
-          val: "text-sky-950",
+          box: "bg-emerald-50 border-emerald-200",
+          lab: "text-emerald-700",
+          val: "text-emerald-900",
         },
       ];
       return (
@@ -986,17 +1256,11 @@ const AdminDashboard = () => {
             <h2 className="text-lg font-bold text-emerald-900">
               Bienvenida al panel de administración
             </h2>
-            <p className="mt-2 text-sm text-gray-500">
-              Usa el menú lateral para caja, usuarios, productos, inventario,
-              proveedores, ventas detalladas y el módulo de predicción con
-              machine learning.
-            </p>
           </div>
 
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-sm text-gray-500">
-              Datos en vivo desde el backend (ventas, productos, clientes,
-              predicción ML).
+              Datos en vivo de cada módulo administrativo.
             </p>
             <button
               type="button"
@@ -1178,6 +1442,8 @@ const AdminDashboard = () => {
                     <tr>
                       <th className="px-3 py-2 font-semibold">N°</th>
                       <th className="px-3 py-2 font-semibold">Fecha</th>
+                      <th className="px-3 py-2 font-semibold">Subtotal</th>
+                      <th className="px-3 py-2 font-semibold">Descuento</th>
                       <th className="px-3 py-2 font-semibold">Total</th>
                       <th className="px-3 py-2 font-semibold">Estado</th>
                       <th className="px-3 py-2 font-semibold">Origen</th>
@@ -1187,7 +1453,7 @@ const AdminDashboard = () => {
                     {dash.loading ? (
                       <tr>
                         <td
-                          colSpan={5}
+                          colSpan={7}
                           className="px-3 py-6 text-center text-gray-400"
                         >
                           Cargando…
@@ -1196,7 +1462,7 @@ const AdminDashboard = () => {
                     ) : dash.ultimasVentas.length === 0 ? (
                       <tr>
                         <td
-                          colSpan={5}
+                          colSpan={7}
                           className="px-3 py-6 text-center text-gray-400"
                         >
                           Aún no hay ventas en el sistema.
@@ -1219,7 +1485,20 @@ const AdminDashboard = () => {
                                 })
                               : "—"}
                           </td>
-                          <td className="px-3 py-2 font-semibold text-emerald-800">
+                          <td className="px-3 py-2 text-gray-600 tabular-nums">
+                            {fmtSoles(row.subtotal)}
+                          </td>
+                          <td className="px-3 py-2 text-emerald-800">
+                            {row.descuento ? (
+                              <span className="font-medium">
+                                {row.descuento.codigo || "Desc."} −{" "}
+                                {fmtSoles(row.descuento.monto)}
+                              </span>
+                            ) : (
+                              "—"
+                            )}
+                          </td>
+                          <td className="px-3 py-2 font-semibold text-emerald-800 tabular-nums">
                             {fmtSoles(row.total)}
                           </td>
                           <td className="px-3 py-2">{row.estado}</td>
@@ -1636,7 +1915,7 @@ const AdminDashboard = () => {
     /* PRODUCTOS */
     if (selectedSection === "productos")
       return (
-        <section className="flex-1 p-8">
+        <section className="flex-1 p-8 space-y-8">
           <div className="bg-white border border-lime-200 rounded-3xl overflow-hidden">
             <div className="px-8 py-4 border-b border-lime-100 flex justify-between items-center flex-wrap gap-2">
               <h2 className="font-bold text-emerald-900">
@@ -1647,6 +1926,7 @@ const AdminDashboard = () => {
                   type="button"
                   onClick={() => {
                     fetchProductos();
+                    fetchPromociones();
                     window.dispatchEvent(new Event("swgfsm-stock-actualizado"));
                   }}
                   className="px-4 py-2 text-xs font-semibold rounded-full border border-emerald-700 text-emerald-800 hover:bg-emerald-50"
@@ -1661,6 +1941,11 @@ const AdminDashboard = () => {
                 </button>
               </div>
             </div>
+            <p className="px-8 pb-3 text-xs text-gray-500 border-b border-lime-100">
+              Descuentos online: puedes usar el mismo código en todas las variedades. Solo aplica
+              a palta madura en la tienda web, hasta agotar stock maduro. Verde y sazón no tienen
+              descuento.
+            </p>
             <div className="overflow-x-auto">
               <table className="w-full text-sm text-left">
                 <thead className="bg-emerald-900 text-lime-50">
@@ -1674,6 +1959,8 @@ const AdminDashboard = () => {
                       "Verde (kg)",
                       "Sazón (kg)",
                       "Estado",
+                      "Cód. descuento",
+                      "Descuento",
                       "Acciones",
                     ].map((h) => (
                       <th
@@ -1715,6 +2002,32 @@ const AdminDashboard = () => {
                             {p.estado}
                           </span>
                         </td>
+                        <td className="px-4 py-2 font-mono text-xs">
+                          {p.codigoDescuento || "—"}
+                        </td>
+                        <td className="px-4 py-2">
+                          <button
+                            type="button"
+                            onClick={() => cambiarEstadoDescuento(p)}
+                            disabled={!String(p.codigoDescuento || "").trim()}
+                            className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                              String(p.descuentoEstado || "").toUpperCase() ===
+                              "ACTIVO"
+                                ? "bg-emerald-100 text-emerald-800 hover:bg-emerald-200"
+                                : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                            } disabled:opacity-40 disabled:cursor-not-allowed`}
+                            title={
+                              p.codigoDescuento
+                                ? "Clic para activar/inactivar descuento online"
+                                : "Asigna código en Editar"
+                            }
+                          >
+                            {String(p.descuentoEstado || "INACTIVO").toUpperCase() ===
+                            "ACTIVO"
+                              ? "ACTIVO"
+                              : "INACTIVO"}
+                          </button>
+                        </td>
                         <td className="px-4 py-2">
                           <div className="flex flex-wrap items-center gap-2">
                             <button
@@ -1739,10 +2052,111 @@ const AdminDashboard = () => {
                   {productos.length === 0 && (
                     <tr>
                       <td
-                        colSpan="9"
+                        colSpan="11"
                         className="text-center py-6 text-gray-400"
                       >
                         No hay productos registrados.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="bg-white border border-amber-200 rounded-3xl overflow-hidden">
+            <div className="px-8 py-4 border-b border-amber-100 flex justify-between items-center flex-wrap gap-2 bg-amber-50/40">
+              <div>
+                <h2 className="font-bold text-amber-950">
+                  Pack Familiar — Promociones
+                </h2>
+                <p className="text-xs text-amber-900/70 mt-1">
+                  Solo puedes crear un pack si esa variedad ya existe en el Listado
+                  de productos (activo). Al vender, se descuenta palta madura de ese
+                  producto.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={abrirModalNuevaPromocion}
+                className="px-4 py-2 text-xs font-semibold rounded-full bg-amber-600 text-white hover:bg-amber-700"
+              >
+                + Añadir promoción
+              </button>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm text-left">
+                <thead className="bg-amber-900 text-amber-50">
+                  <tr>
+                    {[
+                      "Nombre pack",
+                      "Variedad",
+                      "Precio pack",
+                      "Kg madura/pack",
+                      "Estado",
+                      "Acciones",
+                    ].map((h) => (
+                      <th
+                        key={h}
+                        className="px-4 py-3 font-semibold whitespace-nowrap"
+                      >
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {promociones.map((p) => (
+                      <tr key={p._id} className="border-b hover:bg-amber-50/50">
+                        <td className="px-4 py-2 font-medium">
+                          {p.nombre || "Pack Familiar"}
+                        </td>
+                        <td className="px-4 py-2">{p.variedad || "—"}</td>
+                        <td className="px-4 py-2 font-semibold text-amber-900">
+                          S/ {Number(p.precio || 0).toFixed(2)}
+                        </td>
+                        <td className="px-4 py-2">{p.kgMadura ?? 1} kg</td>
+                        <td className="px-4 py-2">
+                          <span
+                            className={`text-xs font-bold uppercase px-2 py-0.5 rounded-full ${
+                              String(p.estado || "").toUpperCase() === "ACTIVO"
+                                ? "bg-emerald-100 text-emerald-800"
+                                : "bg-gray-100 text-gray-500"
+                            }`}
+                          >
+                            {String(p.estado || "").toUpperCase() === "ACTIVO"
+                              ? "Activa"
+                              : "Inactiva"}
+                          </span>
+                        </td>
+                        <td className="px-4 py-2">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => abrirModalEditarPromocion(p)}
+                              className="px-3 py-1 text-xs rounded-full bg-amber-500 text-white hover:bg-amber-600"
+                            >
+                              Editar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => eliminarPromocion(p)}
+                              className="px-3 py-1 text-xs rounded-full bg-red-600 text-white hover:bg-red-700"
+                            >
+                              Eliminar
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  {promociones.length === 0 && (
+                    <tr>
+                      <td
+                        colSpan="6"
+                        className="text-center py-6 text-gray-400"
+                      >
+                        No hay promociones. Usa «+ Añadir promoción» (no requiere
+                        crear producto en el listado de arriba).
                       </td>
                     </tr>
                   )}
@@ -1881,7 +2295,7 @@ const AdminDashboard = () => {
                   </div>
                   <div>
                     <label className="block text-xs font-bold mb-1 text-gray-600">
-                      Estado
+                      Estado producto
                     </label>
                     <select
                       className={inp}
@@ -1892,6 +2306,55 @@ const AdminDashboard = () => {
                       <option value="ACTIVO">ACTIVO</option>
                       <option value="INACTIVO">INACTIVO</option>
                     </select>
+                  </div>
+                  <div className="col-span-2 rounded-xl border border-amber-200 bg-amber-50/50 p-4">
+                    <p className="text-xs font-bold text-amber-950 mb-3">
+                      Descuento online (solo palta madura · hasta agotar stock)
+                    </p>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold mb-1 text-gray-600">
+                          Código descuento
+                        </label>
+                        <input
+                          className={inp}
+                          type="text"
+                          name="codigoDescuento"
+                          value={productoActual.codigoDescuento || ""}
+                          onChange={handleChangeProducto}
+                          placeholder="Ej. PMHSS15"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold mb-1 text-gray-600">
+                          % descuento
+                        </label>
+                        <input
+                          className={inp}
+                          type="number"
+                          min="0"
+                          max="100"
+                          step="1"
+                          name="descuentoPorcentaje"
+                          value={productoActual.descuentoPorcentaje ?? "15"}
+                          onChange={handleChangeProducto}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold mb-1 text-gray-600">
+                          Estado descuento
+                        </label>
+                        <select
+                          className={inp}
+                          name="descuentoEstado"
+                          value={productoActual.descuentoEstado || "INACTIVO"}
+                          onChange={handleChangeProducto}
+                        >
+                          <option value="ACTIVO">ACTIVO</option>
+                          <option value="INACTIVO">INACTIVO</option>
+                        </select>
+                      </div>
+                    </div>
                   </div>
                   <div className="col-span-2">
                     <label className="block text-xs font-bold mb-1 text-gray-600">
@@ -1905,6 +2368,7 @@ const AdminDashboard = () => {
                       rows={2}
                     />
                   </div>
+
                   <div className="col-span-2 flex justify-end gap-3 pt-4 border-t">
                     <button
                       type="button"
@@ -1918,6 +2382,155 @@ const AdminDashboard = () => {
                       className="px-4 py-2 bg-emerald-700 text-white rounded-full hover:bg-emerald-800"
                     >
                       Guardar
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {showPromocionModal && (
+            <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40">
+              <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl p-6 overflow-y-auto max-h-[90vh]">
+                <h2 className="text-lg font-bold mb-1 text-amber-950">
+                  {modoEditarPromocion ? "Editar" : "Nueva"} promoción — Pack Familiar
+                </h2>
+                <p className="text-xs text-gray-500 mb-4">
+                  La variedad elegida debe existir en el Listado de productos (activo).
+                  Al vender, se descuenta palta madura de ese producto por kg.
+                </p>
+                {variedadesPromoPermitidas.length === 0 && (
+                  <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-xl px-3 py-2 mb-4">
+                    No hay productos en el listado para vincular un pack. Registra
+                    primero Palta Fuerte, Hass, Hall o Naval en la tabla superior.
+                  </p>
+                )}
+                <form
+                  onSubmit={handleSubmitPromocion}
+                  className="grid grid-cols-2 gap-4"
+                >
+                  <div>
+                    <label className="block text-xs font-bold mb-1 text-gray-600">
+                      Variedad de palta
+                    </label>
+                    <select
+                      className={inp}
+                      name="variedad"
+                      value={promocionActual.variedad || ""}
+                      onChange={handleChangePromocion}
+                      required
+                      disabled={variedadesPromoPermitidas.length === 0}
+                    >
+                      <option value="">Seleccionar variedad…</option>
+                      {VARIEDADES_PALTA.map((v) => {
+                        const enCatalogo = productoCatalogoPorVariedadPromo.get(v);
+                        const esActual =
+                          modoEditarPromocion && promocionActual.variedad === v;
+                        if (!enCatalogo && !esActual) {
+                          return (
+                            <option key={v} value={v} disabled>
+                              {v} — no registrado en listado de productos
+                            </option>
+                          );
+                        }
+                        const tipo =
+                          enCatalogo?.tipo ?? enCatalogo?.categoriaId ?? v;
+                        return (
+                          <option key={v} value={v}>
+                            {v}
+                            {enCatalogo
+                              ? ` · ${enCatalogo.nombre} (${tipo})`
+                              : " — sin producto en catálogo"}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold mb-1 text-gray-600">
+                      Estado promoción
+                    </label>
+                    <select
+                      className={inp}
+                      name="estado"
+                      value={promocionActual.estado || "ACTIVO"}
+                      onChange={handleChangePromocion}
+                    >
+                      <option value="ACTIVO">ACTIVO (visible en tienda)</option>
+                      <option value="INACTIVO">INACTIVO (oculta en tienda)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold mb-1 text-gray-600">
+                      Nombre promoción
+                    </label>
+                    <input
+                      className={inp}
+                      type="text"
+                      name="nombre"
+                      value={promocionActual.nombre || "Pack Familiar"}
+                      onChange={handleChangePromocion}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold mb-1 text-gray-600">
+                      Precio promoción (S/)
+                    </label>
+                    <input
+                      className={inp}
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      name="precio"
+                      value={promocionActual.precio ?? ""}
+                      onChange={handleChangePromocion}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold mb-1 text-gray-600">
+                      Kg palta madura por pack
+                    </label>
+                    <input
+                      className={inp}
+                      type="number"
+                      step="0.01"
+                      min="0.01"
+                      name="kgMadura"
+                      value={promocionActual.kgMadura ?? "1"}
+                      onChange={handleChangePromocion}
+                    />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="block text-xs font-bold mb-1 text-gray-600">
+                      Descripción promoción
+                    </label>
+                    <textarea
+                      className={inp}
+                      name="descripcion"
+                      value={promocionActual.descripcion || ""}
+                      onChange={handleChangePromocion}
+                      rows={2}
+                      placeholder="Ej. Pack familiar con paltas maduras para ensalada."
+                    />
+                  </div>
+                  <div className="col-span-2 flex justify-end gap-3 pt-4 border-t">
+                    <button
+                      type="button"
+                      onClick={() => setShowPromocionModal(false)}
+                      className="px-4 py-2 border rounded-full text-gray-600 hover:bg-gray-50"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={
+                        !modoEditarPromocion &&
+                        variedadesPromoPermitidas.length === 0
+                      }
+                      className="px-4 py-2 bg-amber-600 text-white rounded-full hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Guardar promoción
                     </button>
                   </div>
                 </form>
@@ -1983,7 +2596,7 @@ const AdminDashboard = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {inventario.length === 0 ? (
+                  {!Array.isArray(inventario) || inventario.length === 0 ? (
                     <tr>
                       <td
                         colSpan="11"

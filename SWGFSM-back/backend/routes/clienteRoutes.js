@@ -8,7 +8,7 @@ const Cliente = require("../models/Cliente");
 const router = express.Router();
 const SALT_ROUNDS = 10;
 const MIN_PASSWORD = 6;
-const JWT_SECRET = process.env.JWT_SECRET;
+const JWT_SECRET = process.env.JWT_SECRET || "default-secret-key";
 const TOKEN_EXPIRY = "24h";
 
 const splitNombreCompleto = (full) => {
