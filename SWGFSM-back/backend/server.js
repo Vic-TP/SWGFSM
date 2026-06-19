@@ -47,6 +47,7 @@ const prediccionRoutes = require("./routes/prediccion"); // Nueva ruta de ML
 const pagoSimuladoRoutes = require("./routes/pagoSimuladoRoutes");
 const tareaRoutes = require("./routes/tareaRoutes");
 const entregaRoutes = require("./routes/entregaRoutes");
+const pagoRoutes = require("./routes/pagoRoutes");
 const verifyJWT = require("./middleware/verifyJWT"); // Middleware para proteger rutas
 
 // --- Definición de Endpoints ---
@@ -60,6 +61,7 @@ app.use("/api/prediccion", verifyJWT, prediccionRoutes); // Endpoint para las pr
 app.use("/api/pago-simulado", verifyJWT, pagoSimuladoRoutes); // Simulador de pasarela (sin PSP real)
 app.use("/api/tareas", verifyJWT, tareaRoutes);
 app.use("/api/entrega", verifyJWT, entregaRoutes);
+app.use("/api/pagos", verifyJWT, pagoRoutes);
 
 // Ruta de prueba
 app.get("/api/test", (req, res) => {

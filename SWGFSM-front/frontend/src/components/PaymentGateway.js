@@ -1,165 +1,321 @@
 // src/components/PaymentGateway.js
-// Simulador de checkout estilo PSP (p. ej. Mercado Pago). No procesa pagos reales.
-// Cuando Mercado Pago valide tu RUC, sustituye runSimulatedPayment por Checkout Pro / Bricks según la doc oficial.
+// Integración real con Mercado Pago Checkout API via CardForm (MercadoPago.js v2).
+// Para tarjeta: el SDK genera un token seguro; el número real NUNCA llega al backend.
+// Para efectivo, Yape, Plin y transferencia: flujo simulado propio (sin PSP).
+//
+// Variables de entorno necesarias en el frontend (.env):
+//   REACT_APP_MP_PUBLIC_KEY=APP_USR-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+//
+// El ACCESS_TOKEN de MP va SOLO en el backend (.env del servidor).
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
+import { loadMercadoPago } from "@mercadopago/sdk-js";
+import { apiCall } from "../utils/apiCall"; // ✅ auth JWT centralizado
 
-/** Solo dígitos, máx. 19 (UnionPay); en simulador usamos 16. */
-const onlyDigits = (s) => String(s || "").replace(/\D/g, "");
+// ---------------------------------------------------------------------------
+// Helper: pago simulado (efectivo, Yape, Plin, transferencia)
+// ---------------------------------------------------------------------------
 
-/** Formato visual 0000 0000 0000 0000 */
-const formatPanDisplay = (digits) =>
-  onlyDigits(digits)
-    .slice(0, 16)
-    .replace(/(\d{4})(?=\d)/g, "$1 ")
-    .trim();
-
-/** Algoritmo de Luhn (validación de número de tarjeta). */
-const luhnOk = (digits) => {
-  const d = onlyDigits(digits);
-  if (d.length < 13 || d.length > 19) return false;
-  let sum = 0;
-  let alt = false;
-  for (let i = d.length - 1; i >= 0; i--) {
-    let n = parseInt(d[i], 10);
-    if (alt) {
-      n *= 2;
-      if (n > 9) n -= 9;
-    }
-    sum += n;
-    alt = !alt;
-  }
-  return sum % 10 === 0;
-};
-
-const parseExpiry = (raw) => {
-  const t = String(raw || "").trim();
-  const m = t.match(/^(\d{2})\s*\/\s*(\d{2})$/);
-  if (!m) return null;
-  const month = parseInt(m[1], 10);
-  const yy = parseInt(m[2], 10);
-  if (month < 1 || month > 12) return null;
-  return { month, yy };
-};
-
-const expiryNotPast = (raw) => {
-  const p = parseExpiry(raw);
-  if (!p) return false;
-  const now = new Date();
-  const yFull = 2000 + p.yy;
-  if (yFull > now.getFullYear() + 50 || yFull < now.getFullYear() - 20) return false;
-  const last = new Date(yFull, p.month, 0, 23, 59, 59);
-  return last >= new Date(now.getFullYear(), now.getMonth(), 1);
-};
-
-const delay = (ms) => new Promise((r) => setTimeout(r, ms));
-
-const apiBase = () => String(process.env.REACT_APP_API_URL || "http://localhost:5000").replace(/\/$/, "");
-
-/**
- * Registra el intento de pago simulado en el backend (`POST /api/pago-simulado`).
- * La validación de tarjeta (Luhn, titular, etc.) se hace en el cliente antes de llamar aquí.
- * Con Mercado Pago real, este fetch se sustituye por la API del PSP.
- */
-async function runSimulatedPayment({ method, total, declineTest }) {
-  await delay(600 + Math.random() * 500);
-  const url = `${apiBase()}/api/pago-simulado`;
-  const token = sessionStorage.getItem("auth_token");
-  const headers = { "Content-Type": "application/json" };
-  if (token) {
-    headers["Authorization"] = `Bearer ${token}`;
-  }
+async function runSimulatedPayment({ method, total, deliveryPayload }) {
   try {
-    const r = await fetch(url, {
+    const data = await apiCall("/pagos/pago-simulado", {
       method: "POST",
-      headers,
       body: JSON.stringify({
         method,
         total: Number(total),
-        declineTest: Boolean(declineTest),
+        ...deliveryPayload,
       }),
     });
-    const data = await r.json().catch(() => ({}));
-    if (!r.ok) {
+
+    if (!data || !data.ok) {
       return {
         ok: false,
-        code: "SERVER",
-        message: data.message || `Error del servidor (${r.status}).`,
+        code: data?.code || "DECLINED",
+        message: data?.message || "Pago rechazado.",
       };
     }
-    if (!data.ok) {
-      return {
-        ok: false,
-        code: data.code || "DECLINED",
-        message: data.message || "Pago rechazado.",
-      };
-    }
+
     return {
       ok: true,
       operationId: data.operationId,
-      message: data.message || `Pago simulado de S/ ${Number(total).toFixed(2)} autorizado.`,
+      message:
+        data.message ||
+        `Intención de pago de S/ ${Number(total).toFixed(2)} registrada.`,
       serverAt: data.serverAt,
     };
-  } catch {
+  } catch (err) {
     return {
       ok: false,
       code: "BACKEND_UNAVAILABLE",
-      message:
-        "No se pudo conectar con el servidor. Comprueba que el backend esté en ejecución (por ejemplo en el puerto 5000).",
+      message: err.message || "No se pudo conectar con el servidor.",
     };
   }
 }
 
+// ---------------------------------------------------------------------------
+// Componente principal
+// ---------------------------------------------------------------------------
+
 const PaymentGateway = ({ total, onSuccess, onCancel, onMethodSelect }) => {
+  // ── Entrega ──────────────────────────────────────────────────────────────
   const [tipoEntrega, setTipoEntrega] = useState("tienda");
   const [estacionId, setEstacionId] = useState("");
   const [entregaConfig, setEntregaConfig] = useState(null);
   const [entregaLoading, setEntregaLoading] = useState(true);
+
+  // ── Método de pago ───────────────────────────────────────────────────────
   const [paymentMethod, setPaymentMethod] = useState("efectivo");
-  const [cardHolder, setCardHolder] = useState("");
-  const [cardNumber, setCardNumber] = useState("");
-  const [cardExpiry, setCardExpiry] = useState("");
-  const [cardCvv, setCardCvv] = useState("");
+
+  // ── Estado general ───────────────────────────────────────────────────────
   const [phase, setPhase] = useState("form"); // form | processing | result
   const [result, setResult] = useState(null);
   const [fieldError, setFieldError] = useState("");
-  const busy = phase === "processing";
 
+  // ── Mercado Pago CardForm ─────────────────────────────────────────────────
+  const [mpReady, setMpReady] = useState(false);
+  const cardFormRef = useRef(null);
+  const mpInstanceRef = useRef(null);
+
+  const busy = phase === "processing";
   const totalNum = Number(total) || 0;
   const brandGreen = "#006241";
   const brandDark = "#1e3932";
 
+  // ── Carga configuración de entrega ───────────────────────────────────────
   useEffect(() => {
-    let cancel = false;
+    let cancelled = false;
     (async () => {
       setEntregaLoading(true);
       try {
-        const token = sessionStorage.getItem("auth_token");
-        const headers = {};
-        if (token) {
-          headers["Authorization"] = `Bearer ${token}`;
-        }
-        const r = await fetch(`${apiBase()}/api/entrega/config`, { headers });
-        if (!r.ok) throw new Error("config");
-        const data = await r.json();
-        if (!cancel) {
+        // ✅ Usa apiCall en lugar de fetch manual
+        const data = await apiCall("/entrega/config", { method: "GET" });
+        if (!data) throw new Error("config");
+        if (!cancelled) {
           setEntregaConfig(data);
           const list = data?.estacionesMetropolitano || [];
           if (list.length > 0) setEstacionId(String(list[0]._id));
         }
       } catch {
-        if (!cancel) setEntregaConfig({ tienda: { direccion: "Av. Mercado Caqueta N° 800, RIMAC" }, estacionesMetropolitano: [] });
+        if (!cancelled)
+          setEntregaConfig({
+            tienda: { direccion: "Av. Mercado Caqueta N° 800, RIMAC" },
+            estacionesMetropolitano: [],
+          });
       } finally {
-        if (!cancel) setEntregaLoading(false);
+        if (!cancelled) setEntregaLoading(false);
       }
     })();
     return () => {
-      cancel = true;
+      cancelled = true;
     };
   }, []);
 
+  // ── Inicializa CardForm de Mercado Pago cuando se elige "tarjeta" ─────────
+  useEffect(() => {
+    if (paymentMethod !== "tarjeta") {
+      if (cardFormRef.current) {
+        try {
+          cardFormRef.current.unmount();
+        } catch (_) {}
+        cardFormRef.current = null;
+      }
+      setMpReady(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        await loadMercadoPago();
+        if (cancelled) return;
+
+        const mp = new window.MercadoPago("APP_USR-f994db05-da1e-4682-9ea1-de005391aa38", {
+          locale: "es-PE",
+        });
+        mpInstanceRef.current = mp;
+
+        const cardForm = mp.cardForm({
+          amount: String(totalNum.toFixed(2)),
+          iframe: true,
+          form: {
+            id: "mp-form-checkout",
+            cardNumber: {
+              id: "mp-form-checkout__cardNumber",
+              placeholder: "Número de tarjeta",
+            },
+            expirationDate: {
+              id: "mp-form-checkout__expirationDate",
+              placeholder: "MM/AA",
+            },
+            securityCode: {
+              id: "mp-form-checkout__securityCode",
+              placeholder: "CVV",
+            },
+            cardholderName: {
+              id: "mp-form-checkout__cardholderName",
+              placeholder: "Como figura en la tarjeta",
+            },
+            issuer: {
+              id: "mp-form-checkout__issuer",
+              placeholder: "Banco emisor",
+            },
+            installments: {
+              id: "mp-form-checkout__installments",
+              placeholder: "Cuotas",    
+            },
+            identificationType: {
+              id: "mp-form-checkout__identificationType",
+              placeholder: "Tipo de documento",
+            },
+            identificationNumber: {
+              id: "mp-form-checkout__identificationNumber",
+              placeholder: "Número de documento",
+            },
+            cardholderEmail: {
+              id: "mp-form-checkout__cardholderEmail",
+              placeholder: "Correo electrónico",
+            },
+          },
+          callbacks: {
+            onFormMounted: (err) => {
+              if (err) {
+                console.warn("Error al montar CardForm:", err);
+                setFieldError(
+                  "No se pudo cargar el formulario de tarjeta. Recarga la página.",
+                );
+                return;
+              }
+              if (!cancelled) setMpReady(true);
+            },
+
+            onSubmit: async (event) => {
+              event.preventDefault();
+              if (cancelled) return;
+              setFieldError("");
+              setPhase("processing");
+
+              const {
+                paymentMethodId,
+                issuerId,
+                cardholderEmail,
+                amount,
+                token,
+                installments,
+                identificationNumber,
+                identificationType,
+              } = cardForm.getCardFormData();
+
+              if (!token) {
+                setFieldError(
+                  "No se pudo obtener el token de la tarjeta. Verifica los datos e intenta de nuevo.",
+                );
+                setPhase("form");
+                return;
+              }
+
+              try {
+                // ✅ apiCall ya maneja JWT y parsea JSON — no hay "res", solo "data"
+                const data = await apiCall("/pagos/create_preference", {
+                  method: "POST",
+                  body: JSON.stringify({
+                    token,
+                    issuer_id: issuerId,
+                    payment_method_id: paymentMethodId,
+                    transaction_amount: Number(amount),
+                    installments: Number(installments),
+                    description: "Compra en Frutería",
+                    payer: {
+                      email: cardholderEmail,
+                      identification: {
+                        type: identificationType,
+                        number: identificationNumber,
+                      },
+                    },
+                    deliveryPayload: buildDeliveryPayload(),
+                  }),
+                });
+
+                // ✅ Corregido: solo evalúa "data", nunca "res"
+                if (!data) {
+                  setResult({
+                    ok: false,
+                    message: "Error al conectar con el servidor.",
+                  });
+                } else if (data.status === "approved") {
+                  setResult({
+                    ok: true,
+                    operationId: String(data.id),
+                    message: `Pago de S/ ${totalNum.toFixed(2)} aprobado correctamente.`,
+                    mpStatus: data.status,
+                    mpDetail: data.status_detail,
+                  });
+                } else if (
+                  data.status === "pending" ||
+                  data.status === "in_process"
+                ) {
+                  setResult({
+                    ok: false,
+                    message:
+                      "El pago está en proceso. Recibirás una notificación cuando se confirme.",
+                  });
+                } else {
+                  setResult({
+                    ok: false,
+                    message:
+                      data.message ||
+                      "El pago fue rechazado. Intenta con otra tarjeta o método de pago.",
+                  });
+                }
+              } catch {
+                setResult({
+                  ok: false,
+                  message:
+                    "Error de conexión. Verifica tu red e intenta de nuevo.",
+                });
+              } finally {
+                if (!cancelled) setPhase("result");
+              }
+            },
+
+            onFetching: () => {
+              return () => {};
+            },
+
+            onError: (errors) => {
+              console.warn("CardForm errors:", errors);
+            },
+          },
+        });
+
+        if (!cancelled) cardFormRef.current = cardForm;
+      } catch (err) {
+        console.error("Error al inicializar Mercado Pago:", err);
+        if (!cancelled)
+          setFieldError(
+            "Error al cargar el formulario de tarjeta. Recarga la página.",
+          );
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      if (cardFormRef.current) {
+        try {
+          cardFormRef.current.unmount();
+        } catch (_) {}
+        cardFormRef.current = null;
+      }
+      setMpReady(false);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paymentMethod, totalNum]);
+
+  // ── Helpers de entrega ───────────────────────────────────────────────────
   const estaciones = entregaConfig?.estacionesMetropolitano || [];
-  const estacionSel = estaciones.find((e) => String(e._id) === String(estacionId));
+  const estacionSel = estaciones.find(
+    (e) => String(e._id) === String(estacionId),
+  );
 
   const buildDeliveryPayload = () => {
     if (tipoEntrega === "metropolitano") {
@@ -173,84 +329,51 @@ const PaymentGateway = ({ total, onSuccess, onCancel, onMethodSelect }) => {
     }
     return {
       tipoEntrega: "TIENDA",
-      tiendaDireccion: entregaConfig?.tienda?.direccion || "Av. Mercado Caqueta N° 800, RIMAC",
+      tiendaDireccion:
+        entregaConfig?.tienda?.direccion || "Av. Mercado Caqueta N° 800, RIMAC",
     };
   };
 
-  const cardDigits = useMemo(() => onlyDigits(cardNumber), [cardNumber]);
-
+  // ── Handlers ─────────────────────────────────────────────────────────────
   const handleMethodChange = (method) => {
     setPaymentMethod(method);
     setFieldError("");
     if (onMethodSelect) onMethodSelect(method);
   };
 
-  const handlePayment = async (e) => {
+  const handleNonCardPayment = async (e) => {
     e.preventDefault();
     setFieldError("");
 
     if (tipoEntrega === "metropolitano") {
       if (!estaciones.length) {
-        setFieldError("No hay estaciones Metropolitano disponibles. Elige recojo en tienda.");
+        setFieldError(
+          "No hay estaciones Metropolitano disponibles. Elige recojo en tienda.",
+        );
         return;
       }
       if (!estacionId) {
-        setFieldError("Selecciona la estación del Metropolitano donde recibirás tu pedido.");
-        return;
-      }
-    }
-
-    if (paymentMethod === "tarjeta") {
-      if (cardDigits.length < 13) {
-        setFieldError("Ingresa un número de tarjeta completo.");
-        return;
-      }
-      if (!luhnOk(cardDigits)) {
-        setFieldError("Número de tarjeta inválido. Revisa los dígitos.");
-        return;
-      }
-      if (!parseExpiry(cardExpiry)) {
-        setFieldError("Fecha de vencimiento inválida (usa MM/AA).");
-        return;
-      }
-      if (!expiryNotPast(cardExpiry)) {
-        setFieldError("La tarjeta está vencida.");
-        return;
-      }
-      const cv = onlyDigits(cardCvv);
-      if (cv.length < 3 || cv.length > 4) {
-        setFieldError("CVV inválido (3 o 4 dígitos).");
-        return;
-      }
-      if (!String(cardHolder || "").trim()) {
-        setFieldError("Nombre del titular obligatorio.");
+        setFieldError(
+          "Selecciona la estación del Metropolitano donde recibirás tu pedido.",
+        );
         return;
       }
     }
 
     setPhase("processing");
-    try {
-      const declineTest = paymentMethod === "tarjeta" && onlyDigits(cardCvv) === "999";
-      const res = await runSimulatedPayment({
-        method: paymentMethod,
-        total: totalNum,
-        declineTest,
-      });
-      setResult(res);
-      setPhase("result");
-    } catch {
-      setResult({
-        ok: false,
-        code: "NETWORK",
-        message: "Error inesperado al procesar. Intenta de nuevo.",
-      });
-      setPhase("result");
-    }
+    const res = await runSimulatedPayment({
+      method: paymentMethod,
+      total: totalNum,
+      deliveryPayload: buildDeliveryPayload(),
+    });
+    setResult(res);
+    setPhase("result");
   };
 
   const finishSuccessAndClose = async () => {
     try {
-      if (typeof onSuccess === "function") await Promise.resolve(onSuccess(buildDeliveryPayload()));
+      if (typeof onSuccess === "function")
+        await Promise.resolve(onSuccess(buildDeliveryPayload()));
     } finally {
       onCancel();
     }
@@ -262,36 +385,51 @@ const PaymentGateway = ({ total, onSuccess, onCancel, onMethodSelect }) => {
     setFieldError("");
   };
 
+  // ── Vista: resultado ─────────────────────────────────────────────────────
   if (phase === "result" && result) {
     return (
       <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/55 p-4">
         <div
           className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl"
           role="dialog"
-          aria-labelledby="sim-result-title"
+          aria-labelledby="mp-result-title"
         >
           <div
             className="px-5 py-4 text-white"
-            style={{ background: result.ok ? "linear-gradient(90deg,#059669,#047857)" : "linear-gradient(90deg,#dc2626,#b91c1c)" }}
+            style={{
+              background: result.ok
+                ? "linear-gradient(90deg,#059669,#047857)"
+                : "linear-gradient(90deg,#dc2626,#b91c1c)",
+            }}
           >
-            <h2 id="sim-result-title" className="text-lg font-bold">
-              {result.ok ? "Pago aprobado" : "No se pudo completar el pago"}
+            <h2 id="mp-result-title" className="text-lg font-bold">
+              {result.ok ? "✓ Pago aprobado" : "Pago no completado"}
             </h2>
-            <p className="mt-1 text-sm text-white/90">Modo simulador — no se ha cobrado dinero real.</p>
+            {result.ok && (
+              <p className="mt-1 text-sm text-white/90">
+                Procesado con Mercado Pago
+              </p>
+            )}
           </div>
+
           <div className="p-6 space-y-4">
             <p className="text-sm text-gray-700">{result.message}</p>
+
             {result.ok && result.operationId && (
               <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm">
-                <span className="text-gray-500">ID de operación (generado en servidor)</span>
-                <p className="mt-1 font-mono font-semibold text-gray-900 break-all">{result.operationId}</p>
-                {result.serverAt && (
-                  <p className="mt-2 text-xs text-gray-500">
-                    Marca de tiempo servidor: <span className="font-mono">{result.serverAt}</span>
+                <span className="text-gray-500">ID de operación</span>
+                <p className="mt-1 font-mono font-semibold text-gray-900 break-all">
+                  {result.operationId}
+                </p>
+                {result.mpDetail && (
+                  <p className="mt-1 text-xs text-gray-500">
+                    Detalle:{" "}
+                    <span className="font-mono">{result.mpDetail}</span>
                   </p>
                 )}
               </div>
             )}
+
             <div className="flex flex-col gap-2 sm:flex-row">
               {!result.ok && (
                 <button
@@ -326,17 +464,22 @@ const PaymentGateway = ({ total, onSuccess, onCancel, onMethodSelect }) => {
     );
   }
 
+  // ── Vista: formulario ────────────────────────────────────────────────────
+  const isTarjeta = paymentMethod === "tarjeta";
+
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/55 p-4">
       <div className="w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl">
-        {/* Cabecera estilo PSP */}
-        <div className="flex items-start justify-between gap-3 px-5 py-4 text-white" style={{ backgroundColor: brandDark }}>
+        {/* Cabecera */}
+        <div
+          className="flex items-start justify-between gap-3 px-5 py-4 text-white"
+          style={{ backgroundColor: brandDark }}
+        >
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-white/85">Checkout simulado</p>
-            <h2 className="text-xl font-bold leading-tight">Pagar compra</h2>
-            <p className="mt-1 max-w-[320px] text-xs text-white/90">
-              Modo de prueba: no se realiza ningún cobro real; sirve para completar tu pedido de demostración.
+            <p className="text-xs font-semibold uppercase tracking-wide text-white/80">
+              Mercado Pago
             </p>
+            <h2 className="text-xl font-bold leading-tight">Pagar compra</h2>
           </div>
           <button
             type="button"
@@ -349,23 +492,31 @@ const PaymentGateway = ({ total, onSuccess, onCancel, onMethodSelect }) => {
           </button>
         </div>
 
-        <div className="border-b border-gray-100 bg-amber-50 px-5 py-2 text-center text-xs font-medium text-amber-900">
-          Simulador: ningún cargo real. Tu pedido se confirma solo al terminar los pasos en pantalla.
-        </div>
-
-        <form onSubmit={handlePayment} className="p-5 sm:p-6">
+        {/* Formulario */}
+        <form
+          id={isTarjeta ? "mp-form-checkout" : undefined}
+          onSubmit={isTarjeta ? undefined : handleNonCardPayment}
+          className="p-5 sm:p-6 overflow-y-auto max-h-[80vh]"
+        >
+          {/* Total */}
           <div className="mb-5 rounded-2xl border border-gray-100 bg-gray-50 p-4">
-            <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Total a pagar</p>
-            <p className="mt-1 text-3xl font-bold text-gray-900">S/ {totalNum.toFixed(2)}</p>
-            <p className="mt-1 text-xs text-gray-500">Sin IGV incluido (según tu política actual).</p>
+            <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+              Total a pagar
+            </p>
+            <p className="mt-1 text-3xl font-bold text-gray-900">
+              S/ {totalNum.toFixed(2)}
+            </p>
           </div>
 
+          {/* Entrega */}
           <div className="mb-5 rounded-2xl border border-[#d4e9e2] bg-[#eef7f3]/60 p-4">
             <label className="mb-3 block text-sm font-semibold text-[#1e3932]">
               ¿Cómo quieres recibir tu pedido?
             </label>
             {entregaLoading ? (
-              <p className="text-sm text-gray-500">Cargando opciones de entrega…</p>
+              <p className="text-sm text-gray-500">
+                Cargando opciones de entrega…
+              </p>
             ) : (
               <>
                 <div className="flex flex-col gap-2 sm:flex-row">
@@ -379,9 +530,12 @@ const PaymentGateway = ({ total, onSuccess, onCancel, onMethodSelect }) => {
                         : "border-gray-200 bg-white/80 hover:border-[#006241]/40"
                     }`}
                   >
-                    <span className="block font-bold text-[#1e3932]">Recojo en tienda</span>
+                    <span className="block font-bold text-[#1e3932]">
+                      Recojo en tienda
+                    </span>
                     <span className="mt-1 block text-xs text-gray-600 leading-snug">
-                      {entregaConfig?.tienda?.direccion || "Av. Mercado Caqueta N° 800, RIMAC"}
+                      {entregaConfig?.tienda?.direccion ||
+                        "Av. Mercado Caqueta N° 800, RIMAC"}
                     </span>
                   </button>
                   <button
@@ -394,7 +548,9 @@ const PaymentGateway = ({ total, onSuccess, onCancel, onMethodSelect }) => {
                         : "border-gray-200 bg-white/80 hover:border-[#006241]/40"
                     }`}
                   >
-                    <span className="block font-bold text-[#1e3932]">Entrega Metropolitano</span>
+                    <span className="block font-bold text-[#1e3932]">
+                      Entrega Metropolitano
+                    </span>
                     <span className="mt-1 block text-xs text-gray-600 leading-snug">
                       Solo en estaciones habilitadas por la frutería
                     </span>
@@ -403,7 +559,10 @@ const PaymentGateway = ({ total, onSuccess, onCancel, onMethodSelect }) => {
 
                 {tipoEntrega === "metropolitano" && estaciones.length > 0 && (
                   <div className="mt-4">
-                    <label htmlFor="estacion-metro" className="mb-1 block text-xs font-semibold text-[#1e3932]">
+                    <label
+                      htmlFor="estacion-metro"
+                      className="mb-1 block text-xs font-semibold text-[#1e3932]"
+                    >
                       Estación de entrega
                     </label>
                     <select
@@ -421,7 +580,9 @@ const PaymentGateway = ({ total, onSuccess, onCancel, onMethodSelect }) => {
                     </select>
                     {estacionSel?.referencia && (
                       <p className="mt-2 text-xs text-gray-600">
-                        <span className="font-semibold text-[#006241]">Punto de encuentro:</span>{" "}
+                        <span className="font-semibold text-[#006241]">
+                          Punto de encuentro:
+                        </span>{" "}
                         {estacionSel.referencia}
                       </p>
                     )}
@@ -430,15 +591,19 @@ const PaymentGateway = ({ total, onSuccess, onCancel, onMethodSelect }) => {
 
                 {tipoEntrega === "metropolitano" && estaciones.length === 0 && (
                   <p className="mt-3 text-xs text-amber-800 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
-                    Por ahora no hay estaciones Metropolitano activas. Elige recojo en tienda.
+                    Por ahora no hay estaciones Metropolitano activas. Elige
+                    recojo en tienda.
                   </p>
                 )}
               </>
             )}
           </div>
 
+          {/* Selector de método de pago */}
           <div className="mb-4">
-            <label className="mb-2 block text-sm font-semibold text-gray-800">¿Cómo quieres pagar?</label>
+            <label className="mb-2 block text-sm font-semibold text-gray-800">
+              ¿Cómo quieres pagar?
+            </label>
             <div className="flex flex-wrap gap-2">
               {[
                 { id: "efectivo", label: "Efectivo" },
@@ -464,104 +629,165 @@ const PaymentGateway = ({ total, onSuccess, onCancel, onMethodSelect }) => {
             </div>
           </div>
 
-          {paymentMethod === "tarjeta" && (
+          {/* ── Sección tarjeta: CardForm de MP ── */}
+          {isTarjeta && (
             <div className="mb-4 space-y-3 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
-              <div className="flex items-center gap-2 text-xs text-gray-500">
-                <span className="inline-block h-4 w-4 rounded border border-gray-300" aria-hidden />
-                Pago con tarjeta de prueba (no se guarda el número completo).
-              </div>
+              {!mpReady && (
+                <p className="text-xs text-gray-400 animate-pulse">
+                  Cargando formulario seguro de Mercado Pago…
+                </p>
+              )}
+
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-700">Titular de la tarjeta</label>
+                <label className="mb-1 block text-xs font-medium text-gray-700">
+                  Número de tarjeta
+                </label>
+                <div
+                  id="mp-form-checkout__cardNumber"
+                  className="h-11 rounded-xl border border-gray-200 px-3"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-700">
+                    Vencimiento
+                  </label>
+                  <div
+                    id="mp-form-checkout__expirationDate"
+                    className="h-11 rounded-xl border border-gray-200 px-3"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-700">
+                    CVV
+                  </label>
+                  <div
+                    id="mp-form-checkout__securityCode"
+                    className="h-11 rounded-xl border border-gray-200 px-3"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-700">
+                  Titular de la tarjeta
+                </label>
                 <input
                   type="text"
+                  id="mp-form-checkout__cardholderName"
                   autoComplete="cc-name"
                   placeholder="Como figura en la tarjeta"
                   className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm outline-none ring-emerald-500/30 focus:ring-2"
-                  value={cardHolder}
-                  onChange={(e) => setCardHolder(e.target.value.toUpperCase())}
                 />
               </div>
+
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-700">Número de tarjeta</label>
+                <label className="mb-1 block text-xs font-medium text-gray-700">
+                  Correo electrónico
+                </label>
                 <input
-                  type="text"
-                  inputMode="numeric"
-                  autoComplete="cc-number"
-                  placeholder="0000 0000 0000 0000"
-                  className="w-full rounded-xl border border-gray-200 px-3 py-2.5 font-mono text-sm tracking-wide outline-none ring-emerald-500/30 focus:ring-2"
-                  value={formatPanDisplay(cardNumber)}
-                  onChange={(e) => setCardNumber(formatPanDisplay(e.target.value))}
+                  type="email"
+                  id="mp-form-checkout__cardholderEmail"
+                  autoComplete="email"
+                  placeholder="Para el comprobante"
+                  className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm outline-none ring-emerald-500/30 focus:ring-2"
                 />
-                <p className="mt-1 text-[11px] leading-snug text-gray-500">
-                  Prueba: número válido Luhn (p. ej. <span className="font-mono">4242 4242 4242 4242</span>) y CVV distinto
-                  de <span className="font-mono">999</span> para aprobar. CVV <span className="font-mono">999</span> simula
-                  rechazo del banco.
-                </p>
               </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-gray-700">Vencimiento</label>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    autoComplete="cc-exp"
-                    placeholder="MM/AA"
-                    className="w-full rounded-xl border border-gray-200 px-3 py-2.5 font-mono text-sm outline-none ring-emerald-500/30 focus:ring-2"
-                    value={cardExpiry}
-                    onChange={(e) => {
-                      let v = onlyDigits(e.target.value).slice(0, 4);
-                      if (v.length >= 3) v = `${v.slice(0, 2)}/${v.slice(2)}`;
-                      setCardExpiry(v);
-                    }}
+                  <label className="mb-1 block text-xs font-medium text-gray-700">
+                    Tipo de documento
+                  </label>
+                  <select
+                    id="mp-form-checkout__identificationType"
+                    className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm outline-none ring-emerald-500/30 focus:ring-2"
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-gray-700">CVV</label>
+                  <label className="mb-1 block text-xs font-medium text-gray-700">
+                    N° de documento
+                  </label>
                   <input
-                    type="password"
+                    type="text"
+                    id="mp-form-checkout__identificationNumber"
                     inputMode="numeric"
-                    autoComplete="cc-csc"
-                    placeholder="•••"
-                    maxLength={4}
-                    className="w-full rounded-xl border border-gray-200 px-3 py-2.5 font-mono text-sm outline-none ring-emerald-500/30 focus:ring-2"
-                    value={cardCvv}
-                    onChange={(e) => setCardCvv(onlyDigits(e.target.value).slice(0, 4))}
+                    placeholder="Número"
+                    className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm outline-none ring-emerald-500/30 focus:ring-2"
                   />
                 </div>
               </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-700">
+                  Banco emisor
+                </label>
+                <select
+                  id="mp-form-checkout__issuer"
+                  className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-700">
+                  Cuotas
+                </label>
+                <select
+                  id="mp-form-checkout__installments"
+                  className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm outline-none"
+                />
+              </div>
+
+              <p className="text-[11px] text-gray-400 leading-snug">
+                🔒 Tus datos de tarjeta son cifrados por Mercado Pago y nunca
+                pasan por nuestros servidores.
+              </p>
             </div>
           )}
 
+          {/* ── Yape / Plin ── */}
           {(paymentMethod === "yape" || paymentMethod === "plin") && (
             <div className="mb-4 rounded-2xl border border-blue-100 bg-blue-50 p-4 text-center text-sm text-gray-700">
               <p>
                 Paga al número: <strong>966 142 980</strong>
               </p>
-              <p className="mt-1 text-xs text-gray-500">Referencia: tu correo. Luego confirma el pedido aquí (simulación).</p>
+              <p className="mt-1 text-xs text-gray-500">
+                Referencia: tu correo. Luego confirma el pedido aquí.
+              </p>
             </div>
           )}
 
+          {/* ── Transferencia ── */}
           {paymentMethod === "transferencia" && (
             <div className="mb-4 rounded-2xl border border-violet-100 bg-violet-50 p-4 text-center text-sm text-gray-700">
               <p>
-                Banco: <strong>BCP</strong> — Cuenta: <strong>123-456-7890</strong>
+                Banco: <strong>BCP</strong> — Cuenta:{" "}
+                <strong>123-456-7890</strong>
               </p>
-              <p className="mt-1 text-xs text-gray-500">Envía el comprobante por WhatsApp al 966 142 980</p>
+              <p className="mt-1 text-xs text-gray-500">
+                Envía el comprobante por WhatsApp al 966 142 980
+              </p>
             </div>
           )}
 
+          {/* ── Efectivo ── */}
           {paymentMethod === "efectivo" && (
             <div className="mb-4 rounded-2xl border border-[#d4e9e2] bg-[#eef7f3]/80 p-4 text-center text-sm text-gray-700">
               {tipoEntrega === "metropolitano"
-                ? "Pagarás en efectivo al recibir tu pedido en la estación Metropolitano indicada (simulador)."
-                : "Pagarás en efectivo al recoger en tienda. Esta pantalla solo registra la intención de pago (simulador)."}
+                ? "Pagarás en efectivo al recibir tu pedido en la estación Metropolitano indicada."
+                : "Pagarás en efectivo al recoger en tienda."}
             </div>
           )}
 
+          {/* Error de campo */}
           {fieldError && (
-            <div className="mb-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{fieldError}</div>
+            <div className="mb-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+              {fieldError}
+            </div>
           )}
 
+          {/* Botones */}
           <div className="mt-2 flex gap-3">
             <button
               type="button"
@@ -571,16 +797,34 @@ const PaymentGateway = ({ total, onSuccess, onCancel, onMethodSelect }) => {
             >
               Cancelar
             </button>
-            <button
-              type="submit"
-              disabled={busy}
-              style={{ backgroundColor: busy ? "#94a3b8" : brandGreen }}
-              className="flex-1 rounded-full py-3 text-sm font-semibold text-white shadow-md hover:brightness-110 disabled:cursor-not-allowed"
-            >
-              {busy ? "Procesando…" : `Pagar S/ ${totalNum.toFixed(2)}`}
-            </button>
-          </div>
 
+            {isTarjeta ? (
+              <button
+                type="submit"
+                id="mp-form-checkout__submit"
+                disabled={busy || !mpReady}
+                style={{
+                  backgroundColor: busy || !mpReady ? "#94a3b8" : brandGreen,
+                }}
+                className="flex-1 rounded-full py-3 text-sm font-semibold text-white shadow-md hover:brightness-110 disabled:cursor-not-allowed"
+              >
+                {busy
+                  ? "Procesando…"
+                  : !mpReady
+                    ? "Cargando…"
+                    : `Pagar S/ ${totalNum.toFixed(2)}`}
+              </button>
+            ) : (
+              <button
+                type="submit"
+                disabled={busy}
+                style={{ backgroundColor: busy ? "#94a3b8" : brandGreen }}
+                className="flex-1 rounded-full py-3 text-sm font-semibold text-white shadow-md hover:brightness-110 disabled:cursor-not-allowed"
+              >
+                {busy ? "Procesando…" : `Confirmar S/ ${totalNum.toFixed(2)}`}
+              </button>
+            )}
+          </div>
         </form>
       </div>
     </div>
