@@ -130,7 +130,7 @@ const PaymentGateway = ({ total, onSuccess, onCancel, onMethodSelect }) => {
         await loadMercadoPago();
         if (cancelled) return;
 
-        const mp = new window.MercadoPago("APP_USR-f994db05-da1e-4682-9ea1-de005391aa38", {
+        const mp = new window.MercadoPago("TEST-b4f18c1d-92b2-4ed8-b2ed-7d2845d1b581", {
           locale: "es-PE",
         });
         mpInstanceRef.current = mp;

@@ -87,7 +87,7 @@ router.get("/", async (req, res) => {
 
 /**
  * Registro/actualización desde caja registradora tras una venta.
- * Actualiza si coincide correo o teléfono; si no, crea un cliente nuevo.
+//  * Actualiza si coincide correo o teléfono; si no, crea un cliente nuevo.
  */
 router.post("/registro-caja", async (req, res) => {
   try {
