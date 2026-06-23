@@ -2,7 +2,7 @@
 // Simulador de checkout estilo PSP (p. ej. Mercado Pago). No procesa pagos reales.
 // Cuando Mercado Pago valide tu RUC, sustituye runSimulatedPayment por Checkout Pro / Bricks según la doc oficial.
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 
 /** Solo dígitos, máx. 19 (UnionPay); en simulador usamos 16. */
 const onlyDigits = (s) => String(s || "").replace(/\D/g, "");
@@ -64,10 +64,15 @@ const apiBase = () => String(process.env.REACT_APP_API_URL || "http://localhost:
 async function runSimulatedPayment({ method, total, declineTest }) {
   await delay(600 + Math.random() * 500);
   const url = `${apiBase()}/api/pago-simulado`;
+  const token = sessionStorage.getItem("auth_token");
+  const headers = { "Content-Type": "application/json" };
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
   try {
     const r = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify({
         method,
         total: Number(total),
@@ -106,6 +111,10 @@ async function runSimulatedPayment({ method, total, declineTest }) {
 }
 
 const PaymentGateway = ({ total, onSuccess, onCancel, onMethodSelect }) => {
+  const [tipoEntrega, setTipoEntrega] = useState("tienda");
+  const [estacionId, setEstacionId] = useState("");
+  const [entregaConfig, setEntregaConfig] = useState(null);
+  const [entregaLoading, setEntregaLoading] = useState(true);
   const [paymentMethod, setPaymentMethod] = useState("efectivo");
   const [cardHolder, setCardHolder] = useState("");
   const [cardNumber, setCardNumber] = useState("");
@@ -117,6 +126,56 @@ const PaymentGateway = ({ total, onSuccess, onCancel, onMethodSelect }) => {
   const busy = phase === "processing";
 
   const totalNum = Number(total) || 0;
+  const brandGreen = "#006241";
+  const brandDark = "#1e3932";
+
+  useEffect(() => {
+    let cancel = false;
+    (async () => {
+      setEntregaLoading(true);
+      try {
+        const token = sessionStorage.getItem("auth_token");
+        const headers = {};
+        if (token) {
+          headers["Authorization"] = `Bearer ${token}`;
+        }
+        const r = await fetch(`${apiBase()}/api/entrega/config`, { headers });
+        if (!r.ok) throw new Error("config");
+        const data = await r.json();
+        if (!cancel) {
+          setEntregaConfig(data);
+          const list = data?.estacionesMetropolitano || [];
+          if (list.length > 0) setEstacionId(String(list[0]._id));
+        }
+      } catch {
+        if (!cancel) setEntregaConfig({ tienda: { direccion: "Av. Mercado Caqueta N° 800, RIMAC" }, estacionesMetropolitano: [] });
+      } finally {
+        if (!cancel) setEntregaLoading(false);
+      }
+    })();
+    return () => {
+      cancel = true;
+    };
+  }, []);
+
+  const estaciones = entregaConfig?.estacionesMetropolitano || [];
+  const estacionSel = estaciones.find((e) => String(e._id) === String(estacionId));
+
+  const buildDeliveryPayload = () => {
+    if (tipoEntrega === "metropolitano") {
+      return {
+        tipoEntrega: "METROPOLITANO",
+        estacionMetropolitanoId: estacionId,
+        estacionMetropolitanoNombre: estacionSel?.nombre,
+        estacionMetropolitanoLinea: estacionSel?.linea,
+        estacionReferencia: estacionSel?.referencia,
+      };
+    }
+    return {
+      tipoEntrega: "TIENDA",
+      tiendaDireccion: entregaConfig?.tienda?.direccion || "Av. Mercado Caqueta N° 800, RIMAC",
+    };
+  };
 
   const cardDigits = useMemo(() => onlyDigits(cardNumber), [cardNumber]);
 
@@ -129,6 +188,17 @@ const PaymentGateway = ({ total, onSuccess, onCancel, onMethodSelect }) => {
   const handlePayment = async (e) => {
     e.preventDefault();
     setFieldError("");
+
+    if (tipoEntrega === "metropolitano") {
+      if (!estaciones.length) {
+        setFieldError("No hay estaciones Metropolitano disponibles. Elige recojo en tienda.");
+        return;
+      }
+      if (!estacionId) {
+        setFieldError("Selecciona la estación del Metropolitano donde recibirás tu pedido.");
+        return;
+      }
+    }
 
     if (paymentMethod === "tarjeta") {
       if (cardDigits.length < 13) {
@@ -180,7 +250,7 @@ const PaymentGateway = ({ total, onSuccess, onCancel, onMethodSelect }) => {
 
   const finishSuccessAndClose = async () => {
     try {
-      if (typeof onSuccess === "function") await Promise.resolve(onSuccess());
+      if (typeof onSuccess === "function") await Promise.resolve(onSuccess(buildDeliveryPayload()));
     } finally {
       onCancel();
     }
@@ -191,8 +261,6 @@ const PaymentGateway = ({ total, onSuccess, onCancel, onMethodSelect }) => {
     setResult(null);
     setFieldError("");
   };
-
-  const mpBlue = "#009ee3";
 
   if (phase === "result" && result) {
     return (
@@ -262,7 +330,7 @@ const PaymentGateway = ({ total, onSuccess, onCancel, onMethodSelect }) => {
     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/55 p-4">
       <div className="w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl">
         {/* Cabecera estilo PSP */}
-        <div className="flex items-start justify-between gap-3 px-5 py-4 text-white" style={{ backgroundColor: mpBlue }}>
+        <div className="flex items-start justify-between gap-3 px-5 py-4 text-white" style={{ backgroundColor: brandDark }}>
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-white/85">Checkout simulado</p>
             <h2 className="text-xl font-bold leading-tight">Pagar compra</h2>
@@ -290,6 +358,83 @@ const PaymentGateway = ({ total, onSuccess, onCancel, onMethodSelect }) => {
             <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Total a pagar</p>
             <p className="mt-1 text-3xl font-bold text-gray-900">S/ {totalNum.toFixed(2)}</p>
             <p className="mt-1 text-xs text-gray-500">Sin IGV incluido (según tu política actual).</p>
+          </div>
+
+          <div className="mb-5 rounded-2xl border border-[#d4e9e2] bg-[#eef7f3]/60 p-4">
+            <label className="mb-3 block text-sm font-semibold text-[#1e3932]">
+              ¿Cómo quieres recibir tu pedido?
+            </label>
+            {entregaLoading ? (
+              <p className="text-sm text-gray-500">Cargando opciones de entrega…</p>
+            ) : (
+              <>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => setTipoEntrega("tienda")}
+                    className={`flex-1 rounded-2xl border-2 px-4 py-3 text-left text-sm transition ${
+                      tipoEntrega === "tienda"
+                        ? "border-[#006241] bg-white shadow-sm"
+                        : "border-gray-200 bg-white/80 hover:border-[#006241]/40"
+                    }`}
+                  >
+                    <span className="block font-bold text-[#1e3932]">Recojo en tienda</span>
+                    <span className="mt-1 block text-xs text-gray-600 leading-snug">
+                      {entregaConfig?.tienda?.direccion || "Av. Mercado Caqueta N° 800, RIMAC"}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy || estaciones.length === 0}
+                    onClick={() => setTipoEntrega("metropolitano")}
+                    className={`flex-1 rounded-2xl border-2 px-4 py-3 text-left text-sm transition disabled:opacity-50 ${
+                      tipoEntrega === "metropolitano"
+                        ? "border-[#006241] bg-white shadow-sm"
+                        : "border-gray-200 bg-white/80 hover:border-[#006241]/40"
+                    }`}
+                  >
+                    <span className="block font-bold text-[#1e3932]">Entrega Metropolitano</span>
+                    <span className="mt-1 block text-xs text-gray-600 leading-snug">
+                      Solo en estaciones habilitadas por la frutería
+                    </span>
+                  </button>
+                </div>
+
+                {tipoEntrega === "metropolitano" && estaciones.length > 0 && (
+                  <div className="mt-4">
+                    <label htmlFor="estacion-metro" className="mb-1 block text-xs font-semibold text-[#1e3932]">
+                      Estación de entrega
+                    </label>
+                    <select
+                      id="estacion-metro"
+                      value={estacionId}
+                      onChange={(e) => setEstacionId(e.target.value)}
+                      disabled={busy}
+                      className="w-full rounded-xl border border-[#d4e9e2] bg-white px-3 py-2.5 text-sm text-[#1e3932] focus:outline-none focus:ring-2 focus:ring-[#006241]/35"
+                    >
+                      {estaciones.map((e) => (
+                        <option key={e._id} value={e._id}>
+                          {e.nombre} — {e.linea}
+                        </option>
+                      ))}
+                    </select>
+                    {estacionSel?.referencia && (
+                      <p className="mt-2 text-xs text-gray-600">
+                        <span className="font-semibold text-[#006241]">Punto de encuentro:</span>{" "}
+                        {estacionSel.referencia}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {tipoEntrega === "metropolitano" && estaciones.length === 0 && (
+                  <p className="mt-3 text-xs text-amber-800 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+                    Por ahora no hay estaciones Metropolitano activas. Elige recojo en tienda.
+                  </p>
+                )}
+              </>
+            )}
           </div>
 
           <div className="mb-4">
@@ -406,8 +551,10 @@ const PaymentGateway = ({ total, onSuccess, onCancel, onMethodSelect }) => {
           )}
 
           {paymentMethod === "efectivo" && (
-            <div className="mb-4 rounded-2xl border border-emerald-100 bg-emerald-50 p-4 text-center text-sm text-gray-700">
-              Pagarás en efectivo al momento de la entrega. Esta pantalla solo registra la intención de pago (simulador).
+            <div className="mb-4 rounded-2xl border border-[#d4e9e2] bg-[#eef7f3]/80 p-4 text-center text-sm text-gray-700">
+              {tipoEntrega === "metropolitano"
+                ? "Pagarás en efectivo al recibir tu pedido en la estación Metropolitano indicada (simulador)."
+                : "Pagarás en efectivo al recoger en tienda. Esta pantalla solo registra la intención de pago (simulador)."}
             </div>
           )}
 
@@ -427,7 +574,7 @@ const PaymentGateway = ({ total, onSuccess, onCancel, onMethodSelect }) => {
             <button
               type="submit"
               disabled={busy}
-              style={{ backgroundColor: busy ? "#94a3b8" : mpBlue }}
+              style={{ backgroundColor: busy ? "#94a3b8" : brandGreen }}
               className="flex-1 rounded-full py-3 text-sm font-semibold text-white shadow-md hover:brightness-110 disabled:cursor-not-allowed"
             >
               {busy ? "Procesando…" : `Pagar S/ ${totalNum.toFixed(2)}`}

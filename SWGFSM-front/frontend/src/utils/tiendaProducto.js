@@ -31,6 +31,88 @@ export const kilosStockPorMadurez = (p) => ({
 
 /** Una sola línea en carrito / venta cuando hay inventario por bucket (coherente con CajaRegistradora). */
 export const MEASURE_CARRITO_BUCKETS = "kgBuckets";
+export const MEASURE_CARRITO_PROMO = "pack-promo";
+
+export const roundKg = (n) => {
+  const x = Number(n);
+  if (!Number.isFinite(x)) return NaN;
+  return Math.round(x * 100) / 100;
+};
+
+export const kgMaduraPackPromocion = (promo) => {
+  const n = Number(promo?.kgMadura);
+  return Number.isFinite(n) && n > 0 ? n : 1;
+};
+
+export const kgTotalPackPromocion = (promo, packs = 1) => {
+  const p = Math.max(1, Math.floor(Number(packs)) || 1);
+  return roundKg(p * kgMaduraPackPromocion(promo));
+};
+
+/** Producto activo del listado por kg que corresponde a una variedad (para packs). */
+export const productoCatalogoPorVariedad = (productos, variedad) => {
+  const v = String(variedad || "")
+    .trim()
+    .toLowerCase();
+  if (!v || !Array.isArray(productos)) return null;
+  const activos = productos.filter(
+    (p) => String(p?.estado || "ACTIVO").toUpperCase() !== "INACTIVO",
+  );
+  const match = (p) => {
+    const t = `${p.tipo || ""} ${p.nombre || ""}`.toLowerCase();
+    if (v === "hall" && t.includes("hall")) return true;
+    if (v === "selva" && t.includes("hall")) return true;
+    return t.includes(v);
+  };
+  return activos.find(match) || null;
+};
+
+export const variedadDisponibleEnCatalogo = (productos, variedad) =>
+  Boolean(productoCatalogoPorVariedad(productos, variedad));
+
+/** Promoción independiente (colección promocion) */
+export const promocionEstaActiva = (promo) =>
+  String(promo?.estado || "").toUpperCase() === "ACTIVO" && Number(promo?.precio) > 0;
+
+export const precioPackPromocion = (promo) => Number(promo?.precio) || 0;
+
+export const nombrePackPromocion = (promo) =>
+  String(promo?.nombre || "Pack Familiar").trim() || "Pack Familiar";
+
+export const descripcionPackPromocion = (promo) => String(promo?.descripcion || "").trim();
+
+export const variedadPackPromocion = (promo) => String(promo?.variedad || "").trim();
+
+/** Legacy: promo embebida en producto */
+export const productoTienePromocion = (p) =>
+  Boolean(p?.promocionActiva) && Number(p?.promocionPrecio) > 0;
+
+export const precioPromocionProducto = (p) =>
+  productoTienePromocion(p) ? Number(p.promocionPrecio) : 0;
+
+export const nombrePromocionProducto = (p) =>
+  String(p?.promocionNombre || "Pack Familiar").trim() || "Pack Familiar";
+
+export const descripcionPromocionProducto = (p) =>
+  String(p?.promocionDescripcion || "").trim();
+
+export const kgMaduraPorPackPromo = (p) => {
+  const n = Number(p?.promocionKgMadura);
+  return Number.isFinite(n) && n > 0 ? n : 1;
+};
+
+export const variedadPromocionProducto = (p) =>
+  String(p?.promocionVariedad || p?.tipo || "").trim();
+
+export const estadoPromocionLabel = (p) =>
+  productoTienePromocion(p) ? "ACTIVO" : "INACTIVO";
+
+export const imagenPromoPorTipo = (p, imgs = {}) => {
+  const cat = categoriaCatalogo(p);
+  if (cat === "fuerte" && imgs.fuerte) return imgs.fuerte;
+  if (cat === "hass" && imgs.hass) return imgs.hass;
+  return null;
+};
 
 export const formatoKgCarritoBuckets = () => ({
   verde: 0,
@@ -140,26 +222,12 @@ export const imagenCatalogo = (p, defaults) => {
 
 const MAX_DESCRIPCION_CORTA = 110;
 
-const TEXTO_CORTO_POR_CATEGORIA = {
-  hass: "Palta Hass: pulpa cremosa, excelente para guacamole y tostadas.",
-  fuerte: "Palta Fuerte: sabor marcado y fruta firme, ideal para ensaladas.",
-  naval: "Palta Naval: jugosa y aromática, perfecta para consumo fresco.",
-  selva: "Palta de selva: variedad regional, frescura directa del productor.",
-  packs: "Selección variada en un solo pedido, pensada para la familia.",
-  premium: "Selección premium: calidad extra y presentación cuidada.",
-  gigante: "Tamaño generoso, ideal para compartir o preparaciones grandes.",
-  otros: "Palta fresca seleccionada, lista para llevar a tu mesa.",
-};
-
 /**
- * Texto breve para tarjetas del catálogo: recorta detalle/descripción o usa un default por variedad.
+ * Texto de tarjeta del catálogo: solo el campo «Descripción» del admin (sin textos automáticos).
  */
 export const descripcionCortaTarjeta = (p) => {
-  const full = String((p?.detalle || p?.descripcion || "").trim()).replace(/\s+/g, " ");
-  if (full) {
-    if (full.length <= MAX_DESCRIPCION_CORTA) return full;
-    return `${full.slice(0, MAX_DESCRIPCION_CORTA - 1).trim()}…`;
-  }
-  const cat = categoriaCatalogo(p);
-  return TEXTO_CORTO_POR_CATEGORIA[cat] || TEXTO_CORTO_POR_CATEGORIA.otros;
+  const full = String(p?.descripcion || "").trim().replace(/\s+/g, " ");
+  if (!full) return "";
+  if (full.length <= MAX_DESCRIPCION_CORTA) return full;
+  return `${full.slice(0, MAX_DESCRIPCION_CORTA - 1).trim()}…`;
 };

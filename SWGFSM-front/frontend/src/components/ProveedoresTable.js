@@ -3,6 +3,27 @@ import React, { useEffect, useState, useCallback } from "react";
 
 const API_URL_PROVEEDORES = "http://localhost:5000/api/proveedores";
 
+const getAuthToken = () => {
+  return sessionStorage.getItem("auth_token");
+};
+
+const fetchWithAuth = async (url, options = {}) => {
+  const token = getAuthToken();
+  const headers = {
+    "Content-Type": "application/json",
+    ...options.headers,
+  };
+
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  return fetch(url, {
+    ...options,
+    headers,
+  });
+};
+
 const inp =
   "w-full border border-gray-200 p-2.5 rounded-xl text-sm outline-none focus:ring-2 focus:ring-emerald-400";
 
@@ -29,7 +50,7 @@ const ProveedoresTable = () => {
     try {
       setLoading(true);
       setError(null);
-      const res = await fetch(API_URL_PROVEEDORES);
+      const res = await fetchWithAuth(API_URL_PROVEEDORES);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       setProveedores(Array.isArray(data) ? data : []);
@@ -80,9 +101,11 @@ const ProveedoresTable = () => {
       return;
     }
     try {
-      const url = modoEditar ? `${API_URL_PROVEEDORES}/${editId}` : API_URL_PROVEEDORES;
+      const url = modoEditar
+        ? `${API_URL_PROVEEDORES}/${editId}`
+        : API_URL_PROVEEDORES;
       const method = modoEditar ? "PUT" : "POST";
-      const res = await fetch(url, {
+      const res = await fetchWithAuth(url, {
         method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -114,12 +137,14 @@ const ProveedoresTable = () => {
       return;
     }
     const ok = window.confirm(
-      `¿Seguro que deseas eliminar a "${prov.nombre || "este proveedor"}"? Esta acción no se puede deshacer.`
+      `¿Seguro que deseas eliminar a "${prov.nombre || "este proveedor"}"? Esta acción no se puede deshacer.`,
     );
     if (!ok) return;
 
     try {
-      const res = await fetch(`${API_URL_PROVEEDORES}/${id}`, { method: "DELETE" });
+      const res = await fetchWithAuth(`${API_URL_PROVEEDORES}/${id}`, {
+        method: "DELETE",
+      });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         throw new Error(data?.message || `Error al eliminar (${res.status})`);
@@ -146,18 +171,25 @@ const ProveedoresTable = () => {
 
       <div className="bg-lime-50 border border-lime-200 rounded-3xl shadow-sm">
         <div className="px-6 py-4 border-b border-lime-200 rounded-t-3xl">
-          <h2 className="text-lg font-semibold text-emerald-900">Listado de proveedores</h2>
+          <h2 className="text-lg font-semibold text-emerald-900">
+            Listado de proveedores
+          </h2>
           <p className="text-sm text-emerald-800/80 mt-1">
-            Registra y gestiona tus proveedores (contacto, puesto, mercado, datos bancarios).
+            Registra y gestiona tus proveedores (contacto, puesto, mercado,
+            datos bancarios).
           </p>
         </div>
 
         {loading ? (
-          <div className="p-6 text-sm text-gray-600">Cargando proveedores...</div>
+          <div className="p-6 text-sm text-gray-600">
+            Cargando proveedores...
+          </div>
         ) : error ? (
           <div className="p-6 text-sm text-red-600">{error}</div>
         ) : proveedores.length === 0 ? (
-          <div className="p-6 text-sm text-gray-600">No hay proveedores registrados.</div>
+          <div className="p-6 text-sm text-gray-600">
+            No hay proveedores registrados.
+          </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
@@ -170,21 +202,37 @@ const ProveedoresTable = () => {
                   <th className="text-left px-4 py-3">Entidad banc.</th>
                   <th className="text-left px-4 py-3">N° cuenta</th>
                   <th className="text-left px-4 py-3">Estado</th>
-                  <th className="text-center px-4 py-3 rounded-tr-3xl">Acciones</th>
+                  <th className="text-center px-4 py-3 rounded-tr-3xl">
+                    Acciones
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {proveedores.map((prov, index) => (
                   <tr
                     key={prov._id || index}
-                    className={index % 2 === 0 ? "bg-lime-50" : "bg-lime-100/60"}
+                    className={
+                      index % 2 === 0 ? "bg-lime-50" : "bg-lime-100/60"
+                    }
                   >
-                    <td className="px-4 py-3 font-medium text-emerald-900">{prov.nombre}</td>
-                    <td className="px-4 py-3 text-gray-800">{prov.numeroPuesto || "—"}</td>
-                    <td className="px-4 py-3 text-gray-800">{prov.telefono || "—"}</td>
-                    <td className="px-4 py-3 text-gray-800">{prov.nombreMercado || "—"}</td>
-                    <td className="px-4 py-3 text-gray-800">{prov.entidadBancaria || "—"}</td>
-                    <td className="px-4 py-3 text-gray-800">{prov.numeroCuenta || "—"}</td>
+                    <td className="px-4 py-3 font-medium text-emerald-900">
+                      {prov.nombre}
+                    </td>
+                    <td className="px-4 py-3 text-gray-800">
+                      {prov.numeroPuesto || "—"}
+                    </td>
+                    <td className="px-4 py-3 text-gray-800">
+                      {prov.telefono || "—"}
+                    </td>
+                    <td className="px-4 py-3 text-gray-800">
+                      {prov.nombreMercado || "—"}
+                    </td>
+                    <td className="px-4 py-3 text-gray-800">
+                      {prov.entidadBancaria || "—"}
+                    </td>
+                    <td className="px-4 py-3 text-gray-800">
+                      {prov.numeroCuenta || "—"}
+                    </td>
                     <td className="px-4 py-3">
                       <span
                         className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${
@@ -230,7 +278,9 @@ const ProveedoresTable = () => {
             </h2>
             <form onSubmit={handleSubmit} className="grid grid-cols-2 gap-4">
               <div className="col-span-2 md:col-span-1">
-                <label className="block text-xs font-bold mb-1 text-gray-600">Nombre</label>
+                <label className="block text-xs font-bold mb-1 text-gray-600">
+                  Nombre
+                </label>
                 <input
                   className={inp}
                   type="text"
@@ -241,7 +291,9 @@ const ProveedoresTable = () => {
                 />
               </div>
               <div className="col-span-2 md:col-span-1">
-                <label className="block text-xs font-bold mb-1 text-gray-600">N° puesto</label>
+                <label className="block text-xs font-bold mb-1 text-gray-600">
+                  N° puesto
+                </label>
                 <input
                   className={inp}
                   type="text"
@@ -251,7 +303,9 @@ const ProveedoresTable = () => {
                 />
               </div>
               <div className="col-span-2 md:col-span-1">
-                <label className="block text-xs font-bold mb-1 text-gray-600">Núm. celular</label>
+                <label className="block text-xs font-bold mb-1 text-gray-600">
+                  Núm. celular
+                </label>
                 <input
                   className={inp}
                   type="tel"
@@ -261,7 +315,9 @@ const ProveedoresTable = () => {
                 />
               </div>
               <div className="col-span-2 md:col-span-1">
-                <label className="block text-xs font-bold mb-1 text-gray-600">Nom. mercado</label>
+                <label className="block text-xs font-bold mb-1 text-gray-600">
+                  Nom. mercado
+                </label>
                 <input
                   className={inp}
                   type="text"
@@ -271,7 +327,9 @@ const ProveedoresTable = () => {
                 />
               </div>
               <div className="col-span-2 md:col-span-1">
-                <label className="block text-xs font-bold mb-1 text-gray-600">Entidad bancaria</label>
+                <label className="block text-xs font-bold mb-1 text-gray-600">
+                  Entidad bancaria
+                </label>
                 <input
                   className={inp}
                   type="text"
@@ -281,7 +339,9 @@ const ProveedoresTable = () => {
                 />
               </div>
               <div className="col-span-2 md:col-span-1">
-                <label className="block text-xs font-bold mb-1 text-gray-600">N° cuenta</label>
+                <label className="block text-xs font-bold mb-1 text-gray-600">
+                  N° cuenta
+                </label>
                 <input
                   className={inp}
                   type="text"
@@ -291,8 +351,15 @@ const ProveedoresTable = () => {
                 />
               </div>
               <div className="col-span-2 md:col-span-1">
-                <label className="block text-xs font-bold mb-1 text-gray-600">Estado</label>
-                <select className={inp} name="estado" value={form.estado} onChange={handleChange}>
+                <label className="block text-xs font-bold mb-1 text-gray-600">
+                  Estado
+                </label>
+                <select
+                  className={inp}
+                  name="estado"
+                  value={form.estado}
+                  onChange={handleChange}
+                >
                   <option value="ACTIVO">ACTIVO</option>
                   <option value="INACTIVO">INACTIVO</option>
                 </select>
@@ -305,7 +372,10 @@ const ProveedoresTable = () => {
                 >
                   Cancelar
                 </button>
-                <button type="submit" className="px-4 py-2 bg-emerald-700 text-white rounded-full hover:bg-emerald-800">
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-emerald-700 text-white rounded-full hover:bg-emerald-800"
+                >
                   Guardar
                 </button>
               </div>

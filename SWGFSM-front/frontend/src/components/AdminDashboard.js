@@ -1,5 +1,5 @@
-
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
+import PropTypes from "prop-types";
 import * as XLSX from "xlsx";
 import ProveedoresTable from "./ProveedoresTable";
 import VentasAdmin from "./VentasAdmin";
@@ -7,35 +7,84 @@ import GestionTareas from "./GestionTareas";
 import TareasAsignadas from "./TareasAsignadas";
 import CajaRegistradora from "./CajaRegistradora";
 import Prediccion from "../predict/Prediccion";
+import PrediccionChartsPanel, {
+  normalizeInventarioML,
+} from "../predict/PrediccionCharts";
 import PasswordInput from "./PasswordInput";
-import { nombreLineaVenta } from "../utils/tiendaProducto";
+import {
+  nombreLineaVenta,
+  productoCatalogoPorVariedad,
+} from "../utils/tiendaProducto";
+import { descuentoVentaDetalle } from "../utils/ventaDescuento";
+import { Toaster, toast } from "sonner";
 
-const API_URL_PRODUCTOS  = "http://localhost:5000/api/producto";
+const API_URL_PRODUCTOS = "http://localhost:5000/api/producto";
+const API_URL_PROMOCIONES = "http://localhost:5000/api/promociones";
 const API_URL_INVENTARIO = "http://localhost:5000/api/inventario";
-const API_URL_CLIENTES   = "http://localhost:5000/api/clientes";
-const API_URL_EMPLEADOS  = "http://localhost:5000/api/empleados";
-const API_URL_VENTAS     = "http://localhost:5000/api/ventas";
+const API_URL_CLIENTES = "http://localhost:5000/api/clientes";
+const API_URL_EMPLEADOS = "http://localhost:5000/api/empleados";
+const API_URL_VENTAS = "http://localhost:5000/api/ventas";
 const API_URL_PREDICCION = "http://localhost:5000/api/prediccion";
+
+const VARIEDADES_PALTA = ["Fuerte", "Hass", "Hall", "Naval"];
+
+const getAuthToken = () => {
+  return sessionStorage.getItem("auth_token");
+};
+
+const fetchWithAuth = async (url, options = {}) => {
+  const token = getAuthToken();
+  const headers = {
+    "Content-Type": "application/json",
+    ...options.headers,
+  };
+
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  return fetch(url, {
+    ...options,
+    headers,
+  });
+};
 
 const readTrabajador = () => {
   try {
-    const raw = localStorage.getItem("trabajador_actual");
+    const raw = sessionStorage.getItem("user_profile");
     return raw ? JSON.parse(raw) : null;
   } catch {
     return null;
   }
 };
 
-/** Vendedor: solo caja + ventas. Resto de roles: panel completo. */
-const isPanelVendedor = (t) => t?.rol === "Vendedor";
+const isPanelVendedor = (trabajador) => {
+  if (!trabajador) return false;
+  const rolesVendedor = ["Vendedor", "Personal de despacho"];
+  return rolesVendedor.includes(trabajador.rol);
+};
+
+const etiquetaRolSidebar = (t) => {
+  if (!t?.rol) return "—";
+  if (t.rol === "Vendedor") return "VENDEDOR";
+  if (t.rol === "Administrador de sistemas") return "ADMINISTRADOR DEL SISTEMA";
+  return String(t.rol).toUpperCase();
+};
+
+const nombreCompletoSidebar = (t) => {
+  const partes = [t?.nombres, t?.apellidos]
+    .filter(Boolean)
+    .map((s) => String(s).trim());
+  return partes.length ? partes.join(" ").toUpperCase() : "";
+};
 
 const sameLocalDay = (a, b) => {
   const d1 = new Date(a);
   const d2 = new Date(b);
   return (
-    d1.getFullYear() === d2.getFullYear() &&
-    d1.getMonth() === d2.getMonth() &&
-    d1.getDate() === d2.getDate()
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
   );
 };
 
@@ -82,7 +131,7 @@ const getVentasWindowEndAnchor = (ventasArr, windowDays) => {
 
 /** Últimos `numDays` días calendario hasta el día de anclaje `endRef` (inicio local): barras */
 const bucketVentasPorDia = (ventasArr, numDays, endRef) => {
-  const end = startOfLocalDay(endRef != null ? endRef : new Date());
+  const end = startOfLocalDay(endRef == null ? new Date() : endRef);
   const buckets = [];
   for (let i = numDays - 1; i >= 0; i--) {
     const d = new Date(end);
@@ -135,13 +184,22 @@ const ventasToXlsxRows = (rows) =>
   rows.map((v) => {
     const fv = fechaVenta(v);
     const productos = Array.isArray(v.productos)
-      ? v.productos.map((p) => `${nombreLineaVenta(p)} x${p.cantidad || ""}`).join("; ")
+      ? v.productos
+          .map((p) => `${nombreLineaVenta(p)} x${p.cantidad || ""}`)
+          .join("; ")
       : "";
     return {
       numeroVenta: v.numeroVenta ?? "",
       fechaISO: fv.toISOString(),
-      total: Number(Number(v.total || 0).toFixed(2)),
       subtotal: Number(Number(v.subtotal ?? v.total ?? 0).toFixed(2)),
+      codigoDescuento: v.codigoDescuento ?? "",
+      descuentoPorcentaje:
+        v.descuentoPorcentaje != null ? Number(v.descuentoPorcentaje) : "",
+      montoDescuento: (() => {
+        const d = descuentoVentaDetalle(v);
+        return d ? Number(d.monto.toFixed(2)) : 0;
+      })(),
+      total: Number(Number(v.total || 0).toFixed(2)),
       estado: v.estado ?? "",
       origen: v.origen ?? "",
       metodoPago: v.metodoPago ?? "",
@@ -161,40 +219,70 @@ const downloadVentasXlsx = (rows, filename) => {
 };
 
 /* ── Modal confirmación de logout ── */
-const LogoutModal = ({ onConfirm, onCancel }) => (
-  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-    <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-8 text-center">
-      <div className="w-14 h-14 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-4">
-        <svg className="w-7 h-7 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-        </svg>
-      </div>
-      <h3 className="text-lg font-bold text-gray-900 mb-2">Cerrar sesión</h3>
-      <p className="text-sm text-gray-500 mb-6">¿Seguro que quieres salir del panel de administración?</p>
-      <div className="flex gap-3">
-        <button onClick={onCancel} className="flex-1 border border-gray-300 text-gray-700 font-semibold py-2.5 rounded-full text-sm hover:bg-gray-50 transition">
-          Cancelar
-        </button>
-        <button onClick={onConfirm} className="flex-1 bg-red-600 hover:bg-red-700 text-white font-semibold py-2.5 rounded-full text-sm transition">
-          Cerrar sesión
-        </button>
+const LogoutModal = ({ onConfirm, onCancel }) => {
+  LogoutModal.propTypes = {
+    onConfirm: PropTypes.func.isRequired,
+    onCancel: PropTypes.func.isRequired,
+  };
+  LogoutModal.propTypes = {
+    onConfirm: PropTypes.func.isRequired,
+    onCancel: PropTypes.func.isRequired,
+  };
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-8 text-center">
+        <div className="w-14 h-14 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-4">
+          <svg
+            className="w-7 h-7 text-red-500"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2}
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
+            />
+          </svg>
+        </div>
+        <h3 className="text-lg font-bold text-gray-900 mb-2">Cerrar sesión</h3>
+        <p className="text-sm text-gray-500 mb-6">
+          ¿Seguro que quieres salir del panel de administración?
+        </p>
+        <div className="flex gap-3">
+          <button
+            onClick={onCancel}
+            className="flex-1 border border-gray-300 text-gray-700 font-semibold py-2.5 rounded-full text-sm hover:bg-gray-50 transition"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={onConfirm}
+            className="flex-1 bg-red-600 hover:bg-red-700 text-white font-semibold py-2.5 rounded-full text-sm transition"
+          >
+            Cerrar sesión
+          </button>
+        </div>
       </div>
     </div>
-  </div>
-);
+  );
+};
 
 const AdminDashboard = () => {
   const [selectedSection, setSelectedSection] = useState(() =>
-    isPanelVendedor(readTrabajador()) ? "caja" : "dashboard"
+    isPanelVendedor(readTrabajador()) ? "caja" : "dashboard",
   );
-  const [modoNuevaVenta, setModoNuevaVenta]   = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
 
-  const [showEmpleadoModal, setShowEmpleadoModal]               = useState(false);
-  const [showProductoModal, setShowProductoModal]               = useState(false);
-  const [showRegistroInventarioModal, setShowRegistroInventarioModal] = useState(false);
+  const [showEmpleadoModal, setShowEmpleadoModal] = useState(false);
+  const [showProductoModal, setShowProductoModal] = useState(false);
+  const [showPromocionModal, setShowPromocionModal] = useState(false);
+  const [showRegistroInventarioModal, setShowRegistroInventarioModal] =
+    useState(false);
 
-  const [productos,  setProductos]  = useState([]);
+  const [productos, setProductos] = useState([]);
+  const [promociones, setPromociones] = useState([]);
   const [inventario, setInventario] = useState([]);
 
   const [modoEditarProducto, setModoEditarProducto] = useState(false);
@@ -210,12 +298,34 @@ const AdminDashboard = () => {
     tamano: "",
     descripcion: "",
     estado: "ACTIVO",
+    codigoDescuento: "",
+    descuentoEstado: "INACTIVO",
+    descuentoPorcentaje: "15",
   });
   const [productoActual, setProductoActual] = useState(emptyProductoForm);
 
+  const emptyPromocionForm = () => ({
+    variedad: "",
+    estado: "ACTIVO",
+    nombre: "Pack Familiar",
+    precio: "",
+    descripcion: "",
+    kgMadura: "1",
+  });
+  const [promocionActual, setPromocionActual] = useState(emptyPromocionForm);
+  const [modoEditarPromocion, setModoEditarPromocion] = useState(false);
+
   const [nuevoInventario, setNuevoInventario] = useState({
-    fecha: "", proveedor: "", numeroPuesto: "", producto: "",
-    tipo: "", tamano: "", detalle: "", cantidad: "", precioCompra: "", totalInvertido: "",
+    fecha: "",
+    proveedor: "",
+    numeroPuesto: "",
+    producto: "",
+    tipo: "",
+    tamano: "",
+    detalle: "",
+    cantidad: "",
+    precioCompra: "",
+    totalInvertido: "",
   });
   const [modoEditarInventario, setModoEditarInventario] = useState(false);
   const [inventarioEditId, setInventarioEditId] = useState(null);
@@ -247,6 +357,7 @@ const AdminDashboard = () => {
     porOrigenSin: 0,
     ultimasVentas: [],
     ventasLista: [],
+    mlPredictions: [],
   });
   const emptyEmpleadoForm = () => ({
     nombres: "",
@@ -260,9 +371,13 @@ const AdminDashboard = () => {
   const [editingEmpleadoId, setEditingEmpleadoId] = useState(null);
 
   useEffect(() => {
-    const ok = localStorage.getItem("trabajador_logueado") === "true";
-    if (!ok) {
+    const trabajador = readTrabajador();
+    const token = getAuthToken();
+
+    // Verificar si hay sesión activa
+    if (!trabajador || !token) {
       window.location.href = "/login-trabajador";
+      return;
     }
   }, []);
 
@@ -275,15 +390,18 @@ const AdminDashboard = () => {
   }, [selectedSection]);
 
   useEffect(() => {
-    if (selectedSection === "productos")  fetchProductos();
+    if (selectedSection === "productos") {
+      fetchProductos();
+      fetchPromociones();
+    }
     if (selectedSection === "inventario") fetchInventario();
-    if (selectedSection === "usuarios")   fetchUsuarios();
-    if (selectedSection === "dashboard")  fetchDashboardData();
+    if (selectedSection === "usuarios") fetchUsuarios();
+    if (selectedSection === "dashboard") fetchDashboardData();
   }, [selectedSection]);
 
   const fetchClientes = async () => {
     try {
-      const r = await fetch(API_URL_CLIENTES);
+      const r = await fetchWithAuth(API_URL_CLIENTES);
       if (!r.ok) throw new Error(String(r.status));
       setClientes(await r.json());
     } catch (e) {
@@ -294,7 +412,7 @@ const AdminDashboard = () => {
 
   const fetchEmpleados = async () => {
     try {
-      const r = await fetch(API_URL_EMPLEADOS);
+      const r = await fetchWithAuth(API_URL_EMPLEADOS);
       if (!r.ok) throw new Error(String(r.status));
       setEmpleados(await r.json());
     } catch (e) {
@@ -321,11 +439,12 @@ const AdminDashboard = () => {
     hace30.setDate(hace30.getDate() - 30);
 
     try {
-      const [rv, rp, rc, rpred] = await Promise.all([
-        fetch(API_URL_VENTAS),
-        fetch(API_URL_PRODUCTOS),
-        fetch(API_URL_CLIENTES),
-        fetch(`${API_URL_PREDICCION}/resumen`),
+      const [rv, rp, rc, rpred, rinv] = await Promise.all([
+        fetchWithAuth(API_URL_VENTAS),
+        fetchWithAuth(API_URL_PRODUCTOS),
+        fetchWithAuth(API_URL_CLIENTES),
+        fetchWithAuth(`${API_URL_PREDICCION}/resumen`),
+        fetchWithAuth(`${API_URL_PREDICCION}/inventario`),
       ]);
 
       if (!rv.ok) throw new Error(`Ventas HTTP ${rv.status}`);
@@ -350,8 +469,21 @@ const AdminDashboard = () => {
         predData = pr?.data || null;
       }
 
-      const ventasHoyList = ventasArr.filter((v) => sameLocalDay(fechaVenta(v), hoy));
-      const ventasHoyMonto = ventasHoyList.reduce((s, v) => s + Number(v.total || 0), 0);
+      let mlPredictions = [];
+      if (rinv.ok) {
+        const inv = await rinv.json();
+        if (inv?.ok && Array.isArray(inv.data)) {
+          mlPredictions = normalizeInventarioML(inv.data);
+        }
+      }
+
+      const ventasHoyList = ventasArr.filter((v) =>
+        sameLocalDay(fechaVenta(v), hoy),
+      );
+      const ventasHoyMonto = ventasHoyList.reduce(
+        (s, v) => s + Number(v.total || 0),
+        0,
+      );
 
       const ventas7 = ventasArr.filter((v) => fechaVenta(v) >= hace7);
       const ventas30 = ventasArr.filter((v) => fechaVenta(v) >= hace30);
@@ -364,7 +496,7 @@ const AdminDashboard = () => {
       });
 
       const activos = productosArr.filter(
-        (p) => String(p.estado || "ACTIVO").toUpperCase() !== "INACTIVO"
+        (p) => String(p.estado || "ACTIVO").toUpperCase() !== "INACTIVO",
       );
       const stockBajoCount = activos.filter((p) => {
         const t = stockKgProducto(p);
@@ -374,21 +506,28 @@ const AdminDashboard = () => {
       const ultimasVentas = [...ventasArr]
         .sort((a, b) => fechaVenta(b) - fechaVenta(a))
         .slice(0, 8)
-        .map((v) => ({
-          id: v._id,
-          numero: v.numeroVenta,
-          fecha: fechaVenta(v),
-          total: Number(v.total || 0),
-          estado: v.estado || "—",
-          origen: v.origen || "—",
-        }));
+        .map((v) => {
+          const d = descuentoVentaDetalle(v);
+          return {
+            id: v._id,
+            numero: v.numeroVenta,
+            fecha: fechaVenta(v),
+            subtotal: Number(v.subtotal ?? v.total ?? 0),
+            total: Number(v.total || 0),
+            descuento: d,
+            estado: v.estado || "—",
+            origen: v.origen || "—",
+          };
+        });
 
       setDash({
         loading: false,
         error: null,
         ventasHoyMonto,
         ventasHoyCount: ventasHoyList.length,
-        pedidosPendientes: ventasArr.filter((v) => String(v.estado) === "Pendiente").length,
+        pedidosPendientes: ventasArr.filter(
+          (v) => String(v.estado) === "Pendiente",
+        ).length,
         productosActivos: activos.length,
         stockBajoCount,
         clientesCount: clientesArr.length,
@@ -406,6 +545,7 @@ const AdminDashboard = () => {
         porOrigenSin: porOrigen.sin,
         ultimasVentas,
         ventasLista: ventasArr,
+        mlPredictions,
       });
 
       setProductos(productosArr);
@@ -422,7 +562,9 @@ const AdminDashboard = () => {
 
   const exportVentasXlsx = (days, slug) => {
     const lista = dash.ventasLista || [];
-    const rows = filterVentasUltimosDias(lista, days).sort((a, b) => fechaVenta(b) - fechaVenta(a));
+    const rows = filterVentasUltimosDias(lista, days).sort(
+      (a, b) => fechaVenta(b) - fechaVenta(a),
+    );
     if (!rows.length) {
       alert("No hay ventas en el rango seleccionado para exportar.");
       return;
@@ -467,7 +609,9 @@ const AdminDashboard = () => {
     }
     const pwd = empleadoForm.password?.trim() || "";
     if (!editingEmpleadoId && pwd.length < 6) {
-      alert("La contraseña es obligatoria al crear un empleado (mínimo 6 caracteres).");
+      alert(
+        "La contraseña es obligatoria al crear un empleado (mínimo 6 caracteres).",
+      );
       return;
     }
     if (editingEmpleadoId && pwd.length > 0 && pwd.length < 6) {
@@ -486,13 +630,13 @@ const AdminDashboard = () => {
       if (editingEmpleadoId) {
         const payload = { ...basePayload };
         if (pwd) payload.password = pwd;
-        res = await fetch(`${API_URL_EMPLEADOS}/${editingEmpleadoId}`, {
+        res = await fetchWithAuth(`${API_URL_EMPLEADOS}/${editingEmpleadoId}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         });
       } else {
-        res = await fetch(API_URL_EMPLEADOS, {
+        res = await fetchWithAuth(API_URL_EMPLEADOS, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ ...basePayload, password: pwd }),
@@ -513,29 +657,54 @@ const AdminDashboard = () => {
     }
   };
 
-  const fetchProductos = async () => { 
-    try { 
-      console.log('Fetching desde:', API_URL_PRODUCTOS);
-      const response = await fetch(API_URL_PRODUCTOS);
+  const fetchPromociones = async () => {
+    try {
+      const r = await fetchWithAuth(API_URL_PROMOCIONES);
+      if (!r.ok) throw new Error(String(r.status));
+      const data = await r.json();
+      setPromociones(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.error(e);
+      setPromociones([]);
+    }
+  };
+
+  const fetchProductos = async () => {
+    try {
+      console.log("Fetching desde:", API_URL_PRODUCTOS);
+      const response = await fetchWithAuth(API_URL_PRODUCTOS);
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
       const data = await response.json();
-      console.log('Productos recibidos:', data);
-      setProductos(data); 
-    } catch (e) { 
-      console.error('Error al cargar productos:', e); 
-      alert('No se pudieron cargar los productos. Verifica el backend.');
-    } 
+      console.log("Productos recibidos:", data);
+      setProductos(data);
+    } catch (e) {
+      console.error("Error al cargar productos:", e);
+      alert("No se pudieron cargar los productos. Verifica el backend.");
+    }
   };
-  
-  const fetchInventario = async () => { 
-    try { 
-      const r = await fetch(API_URL_INVENTARIO); 
-      setInventario(await r.json()); 
-    } catch (e) { 
-      console.error(e); 
-    } 
+
+  const fetchInventario = async () => {
+    try {
+      const r = await fetchWithAuth(API_URL_INVENTARIO);
+      const data = await r.json().catch(() => null);
+      if (!r.ok) {
+        if (r.status === 401) {
+          toast.error(data?.message || "Sesión expirada. Inicia sesión de nuevo.");
+          sessionStorage.removeItem("auth_token");
+          sessionStorage.removeItem("user_profile");
+          window.location.href = "/login-trabajador";
+          return;
+        }
+        throw new Error(data?.message || `HTTP ${r.status}`);
+      }
+      setInventario(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.error(e);
+      setInventario([]);
+      toast.error("No se pudo cargar el inventario. Verifica que el backend esté en marcha.");
+    }
   };
 
   useEffect(() => {
@@ -544,11 +713,42 @@ const AdminDashboard = () => {
       if (selectedSection === "dashboard") fetchDashboardData();
     };
     window.addEventListener("swgfsm-stock-actualizado", onStock);
-    return () => window.removeEventListener("swgfsm-stock-actualizado", onStock);
+    return () =>
+      window.removeEventListener("swgfsm-stock-actualizado", onStock);
   }, [selectedSection]);
 
-  const handleChangeProducto  = (e) => setProductoActual((p)  => ({ ...p,  [e.target.name]: e.target.value }));
-  const handleChangeInventario = (e) => setNuevoInventario((p) => ({ ...p, [e.target.name]: e.target.value }));
+  const productoCatalogoPorVariedadPromo = useMemo(() => {
+    const map = new Map();
+    for (const v of VARIEDADES_PALTA) {
+      map.set(v, productoCatalogoPorVariedad(productos, v));
+    }
+    return map;
+  }, [productos]);
+
+  const variedadesPromoPermitidas = useMemo(
+    () =>
+      VARIEDADES_PALTA.filter((v) => productoCatalogoPorVariedadPromo.get(v)),
+    [productoCatalogoPorVariedadPromo],
+  );
+
+  const handleChangeProducto = (e) => {
+    const { name, value, type, checked } = e.target;
+    setProductoActual((p) => ({
+      ...p,
+      [name]: type === "checkbox" ? checked : value,
+    }));
+  };
+
+  const handleChangePromocion = (e) => {
+    const { name, value } = e.target;
+    if (name === "estado") {
+      setPromocionActual((p) => ({ ...p, estado: value }));
+      return;
+    }
+    setPromocionActual((p) => ({ ...p, [name]: value }));
+  };
+  const handleChangeInventario = (e) =>
+    setNuevoInventario((p) => ({ ...p, [e.target.name]: e.target.value }));
 
   const mapProductoToForm = (p) => ({
     ...emptyProductoForm(),
@@ -560,6 +760,20 @@ const AdminDashboard = () => {
     stockPaltaSazon: p.stockPaltaSazon ?? "",
     detalle: p.detalle ?? "",
     tamano: p.tamano ?? "",
+    codigoDescuento: p.codigoDescuento ?? "",
+    descuentoEstado: p.descuentoEstado ?? "INACTIVO",
+    descuentoPorcentaje: p.descuentoPorcentaje ?? "15",
+  });
+
+  const mapPromocionToForm = (p) => ({
+    ...emptyPromocionForm(),
+    _id: p._id,
+    variedad: p.variedad ?? "",
+    estado: p.estado ?? "ACTIVO",
+    nombre: p.nombre ?? "Pack Familiar",
+    precio: p.precio ?? "",
+    descripcion: p.descripcion ?? "",
+    kgMadura: p.kgMadura ?? "1",
   });
 
   const abrirModalNuevoProducto = () => {
@@ -571,6 +785,24 @@ const AdminDashboard = () => {
     setModoEditarProducto(true);
     setProductoActual(mapProductoToForm(p));
     setShowProductoModal(true);
+  };
+
+  const abrirModalNuevaPromocion = () => {
+    if (variedadesPromoPermitidas.length === 0) {
+      alert(
+        "No hay variedades disponibles en el Listado de productos. Registra primero al menos un producto activo (Fuerte, Hass, Hall o Naval).",
+      );
+      return;
+    }
+    setModoEditarPromocion(false);
+    setPromocionActual(emptyPromocionForm());
+    setShowPromocionModal(true);
+  };
+
+  const abrirModalEditarPromocion = (p) => {
+    setModoEditarPromocion(true);
+    setPromocionActual(mapPromocionToForm(p));
+    setShowPromocionModal(true);
   };
 
   const handleSubmitProducto = async (e) => {
@@ -591,6 +823,24 @@ const AdminDashboard = () => {
       tamano: String(productoActual.tamano || "").trim(),
       descripcion: String(productoActual.descripcion || "").trim(),
       estado: productoActual.estado || "ACTIVO",
+      codigoDescuento: String(productoActual.codigoDescuento || "")
+        .trim()
+        .toUpperCase(),
+      descuentoEstado:
+        String(productoActual.descuentoEstado || "INACTIVO").toUpperCase() ===
+        "ACTIVO"
+          ? "ACTIVO"
+          : "INACTIVO",
+      descuentoPorcentaje: Math.min(
+        100,
+        Math.max(0, num(productoActual.descuentoPorcentaje, 15)),
+      ),
+      promocionActiva: false,
+      promocionVariedad: "",
+      promocionNombre: "Pack Familiar",
+      promocionPrecio: 0,
+      promocionDescripcion: "",
+      promocionKgMadura: 1,
     };
     if (!payload.nombre) {
       alert("El nombre del producto es obligatorio.");
@@ -598,8 +848,10 @@ const AdminDashboard = () => {
     }
     try {
       const method = modoEditarProducto ? "PUT" : "POST";
-      const url = modoEditarProducto ? `${API_URL_PRODUCTOS}/${productoActual._id}` : API_URL_PRODUCTOS;
-      const res = await fetch(url, {
+      const url = modoEditarProducto
+        ? `${API_URL_PRODUCTOS}/${productoActual._id}`
+        : API_URL_PRODUCTOS;
+      const res = await fetchWithAuth(url, {
         method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -614,14 +866,150 @@ const AdminDashboard = () => {
     }
   };
 
+  const handleSubmitPromocion = async (e) => {
+    e.preventDefault();
+    const num = (v, d = 0) => {
+      const n = Number(v);
+      return Number.isFinite(n) ? n : d;
+    };
+    const payload = {
+      nombre: String(promocionActual.nombre || "Pack Familiar").trim() || "Pack Familiar",
+      variedad: String(promocionActual.variedad || "").trim(),
+      precio: num(promocionActual.precio),
+      kgMadura: Math.max(0.01, num(promocionActual.kgMadura, 1)),
+      descripcion: String(promocionActual.descripcion || "").trim(),
+      estado:
+        String(promocionActual.estado || "ACTIVO").toUpperCase() === "INACTIVO"
+          ? "INACTIVO"
+          : "ACTIVO",
+    };
+    if (!payload.variedad) {
+      alert("Selecciona la variedad de palta.");
+      return;
+    }
+    if (payload.precio <= 0) {
+      alert("Indica un precio de pack mayor a 0.");
+      return;
+    }
+    const prodCatalogo = productoCatalogoPorVariedad(productos, payload.variedad);
+    if (!prodCatalogo) {
+      alert(
+        `No puedes registrar el pack: la variedad "${payload.variedad}" no está en el Listado de productos (activo). Añádela primero en la tabla de arriba.`,
+      );
+      return;
+    }
+    try {
+      const method = modoEditarPromocion ? "PUT" : "POST";
+      const url = modoEditarPromocion
+        ? `${API_URL_PROMOCIONES}/${promocionActual._id}`
+        : API_URL_PROMOCIONES;
+      const res = await fetchWithAuth(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (res.ok) {
+        fetchPromociones();
+        setShowPromocionModal(false);
+        alert("Promoción guardada.");
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(err.message || "Error al guardar la promoción.");
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const eliminarPromocion = async (p) => {
+    if (!p?._id) return;
+    if (
+      !window.confirm(
+        `¿Eliminar la promoción "${p.nombre || "Pack Familiar"}" (${p.variedad})?`,
+      )
+    )
+      return;
+    try {
+      const res = await fetchWithAuth(`${API_URL_PROMOCIONES}/${p._id}`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        if (showPromocionModal && promocionActual._id === p._id) {
+          setShowPromocionModal(false);
+        }
+        fetchPromociones();
+        alert("Promoción eliminada.");
+      } else alert("No se pudo eliminar la promoción.");
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const cambiarEstadoDescuento = async (p) => {
+    if (!String(p.codigoDescuento || "").trim()) {
+      alert("Asigna un código de descuento al editar el producto primero.");
+      return;
+    }
+    const nuevo =
+      String(p.descuentoEstado || "INACTIVO").toUpperCase() === "ACTIVO"
+        ? "INACTIVO"
+        : "ACTIVO";
+    const num = (v, d = 0) => {
+      const n = Number(v);
+      return Number.isFinite(n) ? n : d;
+    };
+    try {
+      const res = await fetchWithAuth(`${API_URL_PRODUCTOS}/${p._id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          nombre: p.nombre,
+          tipo: p.tipo ?? p.categoriaId ?? "",
+          unidadMedida: p.unidadMedida || "kg",
+          precioVenta: num(p.precioVenta),
+          stockPaltaMadura: num(p.stockPaltaMadura),
+          stockPaltaVerde: num(p.stockPaltaVerde),
+          stockPaltaSazon: num(p.stockPaltaSazon),
+          detalle: p.detalle ?? "",
+          tamano: p.tamano ?? "",
+          descripcion: p.descripcion ?? "",
+          estado: p.estado || "ACTIVO",
+          codigoDescuento: String(p.codigoDescuento || "").trim().toUpperCase(),
+          descuentoEstado: nuevo,
+          descuentoPorcentaje: num(p.descuentoPorcentaje, 15),
+          promocionActiva: false,
+          promocionVariedad: "",
+          promocionNombre: "Pack Familiar",
+          promocionPrecio: 0,
+          promocionDescripcion: "",
+          promocionKgMadura: 1,
+        }),
+      });
+      if (res.ok) fetchProductos();
+      else alert("No se pudo cambiar el estado del descuento.");
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   const eliminarProducto = async (p) => {
     if (!p?._id) return;
-    if (!window.confirm(`¿Eliminar el producto "${p.nombre}"? Esta acción no se puede deshacer.`)) return;
+    if (
+      !window.confirm(
+        `¿Eliminar el producto "${p.nombre}"? Esta acción no se puede deshacer.`,
+      )
+    )
+      return;
     try {
-      const res = await fetch(`${API_URL_PRODUCTOS}/${p._id}`, { method: "DELETE" });
+      const res = await fetchWithAuth(`${API_URL_PRODUCTOS}/${p._id}`, {
+        method: "DELETE",
+      });
       if (res.ok) {
         if (showProductoModal && productoActual._id === p._id) {
           setShowProductoModal(false);
+        }
+        if (showPromocionModal && promocionActual._id === p._id) {
+          setShowPromocionModal(false);
         }
         fetchProductos();
         alert("Producto eliminado.");
@@ -646,8 +1034,14 @@ const AdminDashboard = () => {
     const cantidad = Number(nuevoInventario.cantidad);
     const precioCompra = Number(nuevoInventario.precioCompra);
     const totalInvertido = Number(nuevoInventario.totalInvertido);
-    if ([cantidad, precioCompra, totalInvertido].some((n) => isNaN(n) || n < 0)) {
-      alert("Cantidad, precio de compra y total invertido deben ser números válidos.");
+    if (
+      [cantidad, precioCompra, totalInvertido].some(
+        (n) => Number.isNaN(n) || n < 0,
+      )
+    ) {
+      alert(
+        "Cantidad, precio de compra y total invertido deben ser números válidos.",
+      );
       return;
     }
     const payload = {
@@ -655,32 +1049,58 @@ const AdminDashboard = () => {
       cantidad,
       precioCompra,
       totalInvertido,
-      fecha: nuevoInventario.fecha ? new Date(nuevoInventario.fecha).toISOString() : undefined
+      fecha: nuevoInventario.fecha
+        ? new Date(nuevoInventario.fecha).toISOString()
+        : undefined,
     };
     try {
-      const url = modoEditarInventario && inventarioEditId
-        ? `${API_URL_INVENTARIO}/${inventarioEditId}`
-        : API_URL_INVENTARIO;
+      const url =
+        modoEditarInventario && inventarioEditId
+          ? `${API_URL_INVENTARIO}/${inventarioEditId}`
+          : API_URL_INVENTARIO;
       const method = modoEditarInventario && inventarioEditId ? "PUT" : "POST";
-      const res = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      const res = await fetchWithAuth(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
       if (res.ok) {
         fetchInventario();
         setShowRegistroInventarioModal(false);
-        setNuevoInventario({ fecha: "", proveedor: "", numeroPuesto: "", producto: "", tipo: "", tamano: "", detalle: "", cantidad: "", precioCompra: "", totalInvertido: "" });
+        setNuevoInventario({
+          fecha: "",
+          proveedor: "",
+          numeroPuesto: "",
+          producto: "",
+          tipo: "",
+          tamano: "",
+          detalle: "",
+          cantidad: "",
+          precioCompra: "",
+          totalInvertido: "",
+        });
         setModoEditarInventario(false);
         setInventarioEditId(null);
-        alert("Registro guardado.");
+        toast.success("Registro guardado")
+        //alert("Registro guardado")
       } else {
         let msg = "Error al guardar inventario.";
-        try { const b = await res.json(); if (b?.message) msg = b.message; } catch {}
+        try {
+          const b = await res.json();
+          if (b?.message) msg = b.message;
+        } catch {}
         alert(msg);
       }
-    } catch { alert("No se pudo conectar con el servidor."); }
+    } catch {
+      alert("No se pudo conectar con el servidor.");
+    }
   };
 
   const abrirEditarInventario = (inv) => {
     if (!inv?._id) return;
-    const fechaIso = inv.fecha ? new Date(inv.fecha).toISOString().slice(0, 10) : "";
+    const fechaIso = inv.fecha
+      ? new Date(inv.fecha).toISOString().slice(0, 10)
+      : "";
     setModoEditarInventario(true);
     setInventarioEditId(inv._id);
     setNuevoInventario({
@@ -698,34 +1118,53 @@ const AdminDashboard = () => {
     setShowRegistroInventarioModal(true);
   };
 
-  const eliminarInventario = async (inv) => {
-    if (!inv?._id) return;
-    if (!window.confirm("¿Eliminar este registro de inventario? Esta acción no se puede deshacer.")) return;
-    try {
-      const res = await fetch(`${API_URL_INVENTARIO}/${inv._id}`, { method: "DELETE" });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok) {
-        fetchInventario();
-        alert("Registro eliminado.");
-      } else {
-        alert(data?.message || "No se pudo eliminar el registro.");
+  const eliminarInventario = async (inv) => { //FLUJO PARA ELIMINAR USANDO TOAST, IMPLEMENTAR EN OTROS MÓDULOS
+  if (!inv?._id) return;
+  toast.warning("¿Eliminar este registro de inventario? Esta acción no se puede deshacer.", {
+    cancel: {
+      label: 'Cancelar',
+      onClick: () => toast.dismiss()
+    },
+    action: {
+      label: 'Aceptar',
+      onClick: async () => {
+        try {
+          const res = await fetchWithAuth(`${API_URL_INVENTARIO}/${inv._id}`, {
+            method: "DELETE",
+          });
+          const data = await res.json().catch(() => ({}));
+          if (res.ok) {
+            fetchInventario();
+            toast.success("Registro eliminado");
+          } else {
+            toast.error(data.message || 'No se pudo eliminar el registro');
+          }
+        } catch (e) {
+          console.error(e);
+          toast.error('Error de conexión al eliminar');
+        }
       }
-    } catch (e) {
-      console.error(e);
-      alert("Error de conexión al eliminar.");
     }
-  };
+  });
+};
 
-  const handleBack   = () => { if (window.opener) window.close(); else window.history.back(); };
+  const handleBack = () => {
+    if (window.opener) window.close();
+    else window.history.back();
+  };
   const confirmLogout = () => {
     localStorage.removeItem("trabajador_logueado");
     localStorage.removeItem("trabajador_actual");
+    sessionStorage.removeItem("user_profile");
+    sessionStorage.removeItem("auth_token");
     window.location.href = "/";
   };
 
   const menuBtnClasses = (s) =>
     `w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition ${
-      selectedSection === s ? "bg-emerald-700 text-lime-50" : "text-emerald-100 hover:bg-emerald-800/60"
+      selectedSection === s
+        ? "bg-emerald-700 text-lime-50"
+        : "text-emerald-100 hover:bg-emerald-800/60"
     }`;
 
   const sectionLabels = {
@@ -757,12 +1196,12 @@ const AdminDashboard = () => {
   const trabajadorSesion = readTrabajador();
   const menuSectionKeys = isPanelVendedor(trabajadorSesion)
     ? ["caja", "ventas", "tareasAsignadas"]
-    : adminMenuOrder.filter((k) => Object.prototype.hasOwnProperty.call(sectionLabels, k));
+    : adminMenuOrder.filter((k) => Object.hasOwn(sectionLabels, k));
 
-  const inp = "w-full border border-gray-200 p-2.5 rounded-xl text-sm outline-none focus:ring-2 focus:ring-emerald-400";
+  const inp =
+    "w-full border border-gray-200 p-2.5 rounded-xl text-sm outline-none focus:ring-2 focus:ring-emerald-400";
 
   const renderContent = () => {
-
     /* DASHBOARD */
     if (selectedSection === "dashboard") {
       const fmtSoles = (n) => `S/ ${Number(n || 0).toFixed(2)}`;
@@ -770,7 +1209,9 @@ const AdminDashboard = () => {
       const kpi = [
         {
           label: "Ventas hoy",
-          sub: dash.ventasHoyCount ? `${dash.ventasHoyCount} ticket(s)` : "Sin ventas hoy",
+          sub: dash.ventasHoyCount
+            ? `${dash.ventasHoyCount} ticket(s)`
+            : "Sin ventas hoy",
           value: dash.loading ? "…" : fmtSoles(dash.ventasHoyMonto),
           box: "bg-emerald-50 border-emerald-200",
           lab: "text-emerald-700",
@@ -780,17 +1221,17 @@ const AdminDashboard = () => {
           label: "Pedidos pendientes",
           sub: "Estado Pendiente",
           value: fmtNum(dash.pedidosPendientes),
-          box: "bg-amber-50 border-amber-200",
-          lab: "text-amber-800",
-          val: "text-amber-950",
+          box: "bg-emerald-50 border-emerald-200",
+          lab: "text-emerald-700",
+          val: "text-emerald-900",
         },
         {
           label: "Productos activos",
           sub: "Catálogo tienda",
           value: fmtNum(dash.productosActivos),
-          box: "bg-lime-50 border-lime-200",
-          lab: "text-lime-800",
-          val: "text-lime-950",
+          box: "bg-emerald-50 border-emerald-200",
+          lab: "text-emerald-700",
+          val: "text-emerald-900",
         },
         {
           label: "Stock bajo",
@@ -804,24 +1245,22 @@ const AdminDashboard = () => {
           label: "Clientes registrados",
           sub: "En base de datos",
           value: fmtNum(dash.clientesCount),
-          box: "bg-sky-50 border-sky-200",
-          lab: "text-sky-800",
-          val: "text-sky-950",
+          box: "bg-emerald-50 border-emerald-200",
+          lab: "text-emerald-700",
+          val: "text-emerald-900",
         },
       ];
       return (
         <section className="flex-1 space-y-6 overflow-y-auto p-8">
           <div className="rounded-3xl border border-lime-200 bg-white p-6 shadow-sm">
-            <h2 className="text-lg font-bold text-emerald-900">Bienvenida al panel de administración</h2>
-            <p className="mt-2 text-sm text-gray-500">
-              Usa el menú lateral para caja, usuarios, productos, inventario, proveedores, ventas detalladas y el módulo
-              de predicción con machine learning.
-            </p>
+            <h2 className="text-lg font-bold text-emerald-900">
+              Bienvenida al panel de administración
+            </h2>
           </div>
 
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-sm text-gray-500">
-              Datos en vivo desde el backend (ventas, productos, clientes, predicción ML).
+              Datos en vivo de cada módulo administrativo.
             </p>
             <button
               type="button"
@@ -833,14 +1272,24 @@ const AdminDashboard = () => {
             </button>
           </div>
           {dash.error && (
-            <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{dash.error}</div>
+            <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+              {dash.error}
+            </div>
           )}
 
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
             {kpi.map((c) => (
               <div key={c.label} className={`rounded-2xl border p-4 ${c.box}`}>
-                <p className={`text-[10px] font-bold uppercase tracking-wide ${c.lab}`}>{c.label}</p>
-                <p className={`mt-1 text-xl font-extrabold tabular-nums sm:text-2xl ${c.val}`}>{c.value}</p>
+                <p
+                  className={`text-[10px] font-bold uppercase tracking-wide ${c.lab}`}
+                >
+                  {c.label}
+                </p>
+                <p
+                  className={`mt-1 text-xl font-extrabold tabular-nums sm:text-2xl ${c.val}`}
+                >
+                  {c.value}
+                </p>
                 <p className="mt-1 text-[10px] text-gray-500">{c.sub}</p>
               </div>
             ))}
@@ -848,41 +1297,63 @@ const AdminDashboard = () => {
 
           <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
             <div className="rounded-3xl border border-lime-200 bg-white p-6 shadow-sm">
-              <h2 className="text-lg font-bold text-emerald-900">Análisis del registro de ventas</h2>
+              <h2 className="text-lg font-bold text-emerald-900">
+                Análisis del registro de ventas
+              </h2>
               <p className="mt-2 text-sm leading-relaxed text-gray-600">
-                Cada venta queda registrada con total, líneas de producto, método de pago y origen (caja física o tienda
-                web). Las cifras de esta sección se calculan con los datos reales devueltos por el servidor.
+                Cada venta queda registrada con total, líneas de producto,
+                método de pago y origen (caja física o tienda web). Las cifras
+                de esta sección se calculan con los datos reales devueltos por
+                el servidor.
               </p>
               <div className="mt-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
                 <div className="rounded-xl bg-gray-50 px-3 py-2">
                   <p className="text-xs text-gray-500">Últimos 7 días</p>
-                  <p className="font-bold text-gray-900">{dash.loading ? "…" : dash.ventas7dCount}</p>
-                  <p className="text-xs text-emerald-700">{fmtSoles(dash.ventas7dMonto)}</p>
+                  <p className="font-bold text-gray-900">
+                    {dash.loading ? "…" : dash.ventas7dCount}
+                  </p>
+                  <p className="text-xs text-emerald-700">
+                    {fmtSoles(dash.ventas7dMonto)}
+                  </p>
                 </div>
                 <div className="rounded-xl bg-gray-50 px-3 py-2">
                   <p className="text-xs text-gray-500">Últimos 30 días</p>
-                  <p className="font-bold text-gray-900">{dash.loading ? "…" : dash.ventas30dCount}</p>
-                  <p className="text-xs text-emerald-700">{fmtSoles(dash.ventas30dMonto)}</p>
+                  <p className="font-bold text-gray-900">
+                    {dash.loading ? "…" : dash.ventas30dCount}
+                  </p>
+                  <p className="text-xs text-emerald-700">
+                    {fmtSoles(dash.ventas30dMonto)}
+                  </p>
                 </div>
                 <div className="rounded-xl bg-gray-50 px-3 py-2">
                   <p className="text-xs text-gray-500">Origen CAJA (30 d.)</p>
-                  <p className="font-bold text-gray-900">{dash.loading ? "…" : dash.porOrigenCaja}</p>
+                  <p className="font-bold text-gray-900">
+                    {dash.loading ? "…" : dash.porOrigenCaja}
+                  </p>
                 </div>
                 <div className="rounded-xl bg-gray-50 px-3 py-2">
                   <p className="text-xs text-gray-500">Origen WEB (30 d.)</p>
-                  <p className="font-bold text-gray-900">{dash.loading ? "…" : dash.porOrigenOnline}</p>
+                  <p className="font-bold text-gray-900">
+                    {dash.loading ? "…" : dash.porOrigenOnline}
+                  </p>
                 </div>
               </div>
 
               <div className="mt-5 rounded-2xl border border-emerald-100 bg-gradient-to-b from-emerald-50/60 to-white p-4">
                 <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
                   <div>
-                    <h3 className="text-sm font-bold text-emerald-900">Ventas por día (últimos 14 días)</h3>
-                    <p className="text-[11px] text-gray-500">Altura de cada barra = monto total del día en soles.</p>
+                    <h3 className="text-sm font-bold text-emerald-900">
+                      Ventas por día (últimos 14 días)
+                    </h3>
+                    <p className="text-[11px] text-gray-500">
+                      Altura de cada barra = monto total del día en soles.
+                    </p>
                   </div>
                 </div>
                 {dash.loading ? (
-                  <p className="py-8 text-center text-xs text-gray-400">Cargando gráfico…</p>
+                  <p className="py-8 text-center text-xs text-gray-400">
+                    Cargando gráfico…
+                  </p>
                 ) : (
                   (() => {
                     const lista = dash.ventasLista || [];
@@ -892,32 +1363,40 @@ const AdminDashboard = () => {
                     const chartH = 112;
                     const anchorIsPast =
                       lista.length > 0 &&
-                      startOfLocalDay(chartEnd).getTime() < startOfLocalDay(new Date()).getTime();
+                      startOfLocalDay(chartEnd).getTime() <
+                        startOfLocalDay(new Date()).getTime();
                     return (
                       <>
                         {anchorIsPast && (
                           <p className="mb-2 rounded-lg bg-amber-50 px-2 py-1.5 text-[10px] text-amber-900">
-                            No hay ventas en las últimas fechas del calendario; se muestran 14 días hasta la última venta
+                            No hay ventas en las últimas fechas del calendario;
+                            se muestran 14 días hasta la última venta
                             registrada.
                           </p>
                         )}
-                      <div className="flex h-[148px] items-end justify-between gap-0.5 border-b border-emerald-200/50 pb-1 sm:gap-1">
-                        {buckets.map((b) => {
-                          const barPx = b.total > 0 ? Math.max(6, (b.total / max) * chartH) : 4;
-                          return (
-                            <div key={b.key} className="flex min-w-0 flex-1 flex-col items-center">
+                        <div className="flex h-[148px] items-end justify-between gap-0.5 border-b border-emerald-200/50 pb-1 sm:gap-1">
+                          {buckets.map((b) => {
+                            const barPx =
+                              b.total > 0
+                                ? Math.max(6, (b.total / max) * chartH)
+                                : 4;
+                            return (
                               <div
-                                className="w-full max-w-[26px] rounded-t-md bg-emerald-600 transition hover:bg-emerald-700 sm:max-w-[32px]"
-                                style={{ height: `${barPx}px` }}
-                                title={`${b.label}: ${b.count} venta(s), ${fmtSoles(b.total)}`}
-                              />
-                              <span className="mt-1 max-w-full truncate text-center text-[9px] leading-tight text-gray-500 sm:text-[10px]">
-                                {b.label}
-                              </span>
-                            </div>
-                          );
-                        })}
-                      </div>
+                                key={b.key}
+                                className="flex min-w-0 flex-1 flex-col items-center"
+                              >
+                                <div
+                                  className="w-full max-w-[26px] rounded-t-md bg-emerald-600 transition hover:bg-emerald-700 sm:max-w-[32px]"
+                                  style={{ height: `${barPx}px` }}
+                                  title={`${b.label}: ${b.count} venta(s), ${fmtSoles(b.total)}`}
+                                />
+                                <span className="mt-1 max-w-full truncate text-center text-[9px] leading-tight text-gray-500 sm:text-[10px]">
+                                  {b.label}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
                       </>
                     );
                   })()
@@ -925,10 +1404,14 @@ const AdminDashboard = () => {
               </div>
 
               <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-gray-100 bg-gray-50/80 p-4">
-                <p className="text-xs font-semibold text-gray-800">Exportar registro de ventas (Excel .xlsx)</p>
+                <p className="text-xs font-semibold text-gray-800">
+                  Exportar registro de ventas (Excel .xlsx)
+                </p>
                 <p className="text-[11px] text-gray-500">
-                  Rango: últimos 7, 15, 30 o 365 días respecto a <strong>hoy</strong>; si no hay ventas en ese lapso
-                  (p. ej. datos antiguos), se usa la <strong>última fecha con ventas</strong> como fin del periodo.
+                  Rango: últimos 7, 15, 30 o 365 días respecto a{" "}
+                  <strong>hoy</strong>; si no hay ventas en ese lapso (p. ej.
+                  datos antiguos), se usa la{" "}
+                  <strong>última fecha con ventas</strong> como fin del periodo.
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {[
@@ -950,13 +1433,17 @@ const AdminDashboard = () => {
                 </div>
               </div>
 
-              <h3 className="mt-6 text-sm font-bold text-gray-800">Últimas ventas registradas</h3>
+              <h3 className="mt-6 text-sm font-bold text-gray-800">
+                Últimas ventas registradas
+              </h3>
               <div className="mt-2 max-h-56 overflow-auto rounded-xl border border-gray-100">
                 <table className="w-full min-w-[320px] text-left text-xs">
                   <thead className="sticky top-0 bg-emerald-900 text-lime-50">
                     <tr>
                       <th className="px-3 py-2 font-semibold">N°</th>
                       <th className="px-3 py-2 font-semibold">Fecha</th>
+                      <th className="px-3 py-2 font-semibold">Subtotal</th>
+                      <th className="px-3 py-2 font-semibold">Descuento</th>
                       <th className="px-3 py-2 font-semibold">Total</th>
                       <th className="px-3 py-2 font-semibold">Estado</th>
                       <th className="px-3 py-2 font-semibold">Origen</th>
@@ -965,24 +1452,55 @@ const AdminDashboard = () => {
                   <tbody>
                     {dash.loading ? (
                       <tr>
-                        <td colSpan={5} className="px-3 py-6 text-center text-gray-400">
+                        <td
+                          colSpan={7}
+                          className="px-3 py-6 text-center text-gray-400"
+                        >
                           Cargando…
                         </td>
                       </tr>
                     ) : dash.ultimasVentas.length === 0 ? (
                       <tr>
-                        <td colSpan={5} className="px-3 py-6 text-center text-gray-400">
+                        <td
+                          colSpan={7}
+                          className="px-3 py-6 text-center text-gray-400"
+                        >
                           Aún no hay ventas en el sistema.
                         </td>
                       </tr>
                     ) : (
                       dash.ultimasVentas.map((row) => (
-                        <tr key={row.id || row.numero} className="border-t border-gray-100 hover:bg-lime-50/50">
-                          <td className="px-3 py-2 font-mono text-gray-800">{row.numero || "—"}</td>
-                          <td className="px-3 py-2 text-gray-600">
-                            {row.fecha ? row.fecha.toLocaleString("es-PE", { dateStyle: "short", timeStyle: "short" }) : "—"}
+                        <tr
+                          key={row.id || row.numero}
+                          className="border-t border-gray-100 hover:bg-lime-50/50"
+                        >
+                          <td className="px-3 py-2 font-mono text-gray-800">
+                            {row.numero || "—"}
                           </td>
-                          <td className="px-3 py-2 font-semibold text-emerald-800">{fmtSoles(row.total)}</td>
+                          <td className="px-3 py-2 text-gray-600">
+                            {row.fecha
+                              ? row.fecha.toLocaleString("es-PE", {
+                                  dateStyle: "short",
+                                  timeStyle: "short",
+                                })
+                              : "—"}
+                          </td>
+                          <td className="px-3 py-2 text-gray-600 tabular-nums">
+                            {fmtSoles(row.subtotal)}
+                          </td>
+                          <td className="px-3 py-2 text-emerald-800">
+                            {row.descuento ? (
+                              <span className="font-medium">
+                                {row.descuento.codigo || "Desc."} −{" "}
+                                {fmtSoles(row.descuento.monto)}
+                              </span>
+                            ) : (
+                              "—"
+                            )}
+                          </td>
+                          <td className="px-3 py-2 font-semibold text-emerald-800 tabular-nums">
+                            {fmtSoles(row.total)}
+                          </td>
                           <td className="px-3 py-2">{row.estado}</td>
                           <td className="px-3 py-2">{row.origen}</td>
                         </tr>
@@ -996,10 +1514,13 @@ const AdminDashboard = () => {
             <div className="rounded-3xl border border-lime-200 bg-white p-6 shadow-sm">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div>
-                  <h2 className="text-lg font-bold text-emerald-900">Palta madura (predicción ML)</h2>
+                  <h2 className="text-lg font-bold uppercase tracking-wide text-emerald-900">
+                    PREDICCION DE PALTAS
+                  </h2>
                   <p className="mt-1 text-sm text-gray-600">
-                    Kilos estimados por estado de madurez según el modelo de machine learning aplicado a los lotes de
-                    inventario registrados.
+                    Kilos estimados por estado de madurez según el modelo de
+                    machine learning aplicado a los lotes de inventario
+                    registrados.
                   </p>
                 </div>
                 <button
@@ -1007,40 +1528,59 @@ const AdminDashboard = () => {
                   onClick={() => setSelectedSection("prediction")}
                   className="shrink-0 rounded-full bg-emerald-700 px-4 py-2 text-xs font-semibold text-lime-50 hover:bg-emerald-600"
                 >
-                  Ver predicción
+                  Ver módulo completo
                 </button>
               </div>
               <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
                 <div className="rounded-xl border border-emerald-100 bg-emerald-50/80 px-3 py-3">
-                  <p className="text-[10px] font-bold uppercase text-emerald-800">Maduro (kg)</p>
+                  <p className="text-[10px] font-bold uppercase text-emerald-800">
+                    Maduro (kg)
+                  </p>
                   <p className="text-2xl font-extrabold text-emerald-900 tabular-nums">
                     {dash.loading ? "…" : Number(dash.kgMaduroML).toFixed(1)}
                   </p>
                 </div>
                 <div className="rounded-xl border border-lime-100 bg-lime-50 px-3 py-3">
-                  <p className="text-[10px] font-bold uppercase text-lime-900">En sazón (kg)</p>
+                  <p className="text-[10px] font-bold uppercase text-lime-900">
+                    En sazón (kg)
+                  </p>
                   <p className="text-2xl font-extrabold text-lime-950 tabular-nums">
                     {dash.loading ? "…" : Number(dash.kgSazonML).toFixed(1)}
                   </p>
                 </div>
                 <div className="rounded-xl border border-green-100 bg-green-50 px-3 py-3">
-                  <p className="text-[10px] font-bold uppercase text-green-900">Verde (kg)</p>
+                  <p className="text-[10px] font-bold uppercase text-green-900">
+                    Verde (kg)
+                  </p>
                   <p className="text-2xl font-extrabold text-green-950 tabular-nums">
                     {dash.loading ? "…" : Number(dash.kgVerdeML).toFixed(1)}
                   </p>
                 </div>
                 <div className="rounded-xl border border-amber-100 bg-amber-50 px-3 py-3">
-                  <p className="text-[10px] font-bold uppercase text-amber-900">Punto negro (kg)</p>
+                  <p className="text-[10px] font-bold uppercase text-amber-900">
+                    Punto negro (kg)
+                  </p>
                   <p className="text-2xl font-extrabold text-amber-950 tabular-nums">
-                    {dash.loading ? "…" : Number(dash.kgPuntoNegroML).toFixed(1)}
+                    {dash.loading
+                      ? "…"
+                      : Number(dash.kgPuntoNegroML).toFixed(1)}
                   </p>
                 </div>
               </div>
               <p className="mt-4 text-xs text-gray-500">
-                Lotes de inventario considerados:{" "}
-                <strong>{dash.loading ? "…" : dash.lotesInventarioML}</strong>. La palta clasificada como{" "}
-                <strong>madura</strong> es la que el sistema anticipa lista o casi lista para venta inmediata.
+                Sub-lotes analizados por el modelo:{" "}
+                <strong>
+                  {dash.loading ? "…" : dash.mlPredictions.length}
+                </strong>
+                . La palta en estado <strong>maduro</strong> es la que el
+                sistema anticipa lista o casi lista para venta inmediata.
               </p>
+
+              <PrediccionChartsPanel
+                predictions={dash.mlPredictions}
+                loading={dash.loading}
+                showExplanations
+              />
             </div>
           </div>
         </section>
@@ -1061,477 +1601,1231 @@ const AdminDashboard = () => {
     }
 
     /* PREDICCION */
-     if (selectedSection === "prediction") {
-       return <Prediccion />;
+    if (selectedSection === "prediction") {
+      return <Prediccion />;
     }
-    
 
     /* USUARIOS */
-    if (selectedSection === "usuarios") return (
-      <section className="flex-1 p-8 space-y-8">
-        <h1 className="text-2xl font-bold text-emerald-900">Usuarios</h1>
-        <div className="bg-white border border-lime-200 rounded-3xl overflow-hidden">
-          <div className="px-8 py-4 border-b border-lime-100 flex justify-between items-center">
-            <h2 className="text-sm font-bold text-emerald-900">Clientes</h2>
-            <button
-              type="button"
-              onClick={fetchClientes}
-              className="px-3 py-1.5 rounded-full text-xs font-semibold border border-emerald-200 text-emerald-800 hover:bg-emerald-50"
-            >
-              Actualizar
-            </button>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead><tr className="bg-emerald-900 text-lime-50 text-left">
-                {["Nombres", "Apellidos", "Tipo", "Teléfono", "Correo", "Dirección", "Estado"].map(h => <th key={h} className="px-4 py-3 font-semibold">{h}</th>)}
-              </tr></thead>
-              <tbody>
-                {cargandoUsuarios ? (
-                  <tr><td colSpan="7" className="px-4 py-8 text-center text-gray-400">Cargando clientes…</td></tr>
-                ) : clientes.length === 0 ? (
-                  <tr><td colSpan="7" className="px-4 py-8 text-center text-gray-400">No hay clientes registrados. Los datos ingresados en Caja registradora al concretar una venta aparecerán aquí.</td></tr>
-                ) : (
-                  clientes.map((c) => (
-                    <tr key={c._id} className="border-t hover:bg-lime-50">
-                      <td className="px-4 py-2">{c.nombres}</td>
-                      <td className="px-4 py-2">{c.apellidos}</td>
-                      <td className="px-4 py-2">{c.tipoCliente}</td>
-                      <td className="px-4 py-2">{c.telefono || "—"}</td>
-                      <td className="px-4 py-2">{c.correo || "—"}</td>
-                      <td className="px-4 py-2">{c.direccion || "—"}</td>
-                      <td className="px-4 py-2"><span className="bg-emerald-100 text-emerald-800 text-xs font-semibold px-2 py-0.5 rounded-full">{c.estado}</span></td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <div className="bg-white border border-lime-200 rounded-3xl overflow-hidden">
-          <div className="px-8 py-4 border-b border-lime-100 flex justify-between items-center">
-            <h2 className="text-sm font-bold text-emerald-900">Empleados</h2>
-            <button type="button" onClick={abrirModalNuevoEmpleado} className="px-4 py-1.5 rounded-full text-xs font-semibold bg-emerald-700 text-lime-50 hover:bg-emerald-600">+ Añadir</button>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead><tr className="bg-emerald-900 text-lime-50 text-left">
-                {["Nombres", "Apellidos", "Correo", "Teléfono", "Rol", "Estado", "Acciones"].map(h => <th key={h} className="px-4 py-3 font-semibold">{h}</th>)}
-              </tr></thead>
-              <tbody>
-                {cargandoUsuarios ? (
-                  <tr><td colSpan="7" className="px-4 py-8 text-center text-gray-400">Cargando empleados…</td></tr>
-                ) : empleados.length === 0 ? (
-                  <tr><td colSpan="7" className="px-4 py-8 text-center text-gray-400">No hay empleados. Usa &quot;+ Añadir&quot; para registrar uno en la base de datos.</td></tr>
-                ) : (
-                  empleados.map((e) => (
-                    <tr key={e._id} className="border-t hover:bg-lime-50">
-                      <td className="px-4 py-2">{e.nombres}</td>
-                      <td className="px-4 py-2">{e.apellidos}</td>
-                      <td className="px-4 py-2">{e.correo}</td>
-                      <td className="px-4 py-2">{e.telefono || "—"}</td>
-                      <td className="px-4 py-2">{e.rol}</td>
-                      <td className="px-4 py-2"><span className="bg-emerald-100 text-emerald-800 text-xs font-semibold px-2 py-0.5 rounded-full">{e.estado}</span></td>
-                      <td className="px-4 py-2">
-                        <button
-                          type="button"
-                          onClick={() => abrirModalEditarEmpleado(e)}
-                          className="text-xs font-semibold text-emerald-800 hover:underline"
-                        >
-                          Editar
-                        </button>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {showEmpleadoModal && (
-          <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40">
-            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-              <form onSubmit={handleSubmitEmpleado}>
-                <div className="flex items-center justify-between px-6 py-4 border-b">
-                  <h2 className="text-base font-bold text-gray-900">{editingEmpleadoId ? "Editar empleado" : "Nuevo empleado"}</h2>
-                  <button type="button" onClick={cerrarModalEmpleado} className="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
-                </div>
-                <div className="px-6 py-4 space-y-3 text-sm">
-                  <div>
-                    <label className="block mb-1 font-medium text-gray-700">Nombres</label>
-                    <input name="nombres" value={empleadoForm.nombres} onChange={handleChangeEmpleadoForm} className={inp} required />
-                  </div>
-                  <div>
-                    <label className="block mb-1 font-medium text-gray-700">Apellidos</label>
-                    <input name="apellidos" value={empleadoForm.apellidos} onChange={handleChangeEmpleadoForm} className={inp} />
-                  </div>
-                  <div>
-                    <label className="block mb-1 font-medium text-gray-700">Correo *</label>
-                    <input type="email" name="correo" value={empleadoForm.correo} onChange={handleChangeEmpleadoForm} className={inp} required />
-                  </div>
-                  <div>
-                    <label className="block mb-1 font-medium text-gray-700">
-                      Contraseña {editingEmpleadoId ? "(opcional)" : "*"}
-                    </label>
-                    <PasswordInput
-                      name="password"
-                      value={empleadoForm.password}
-                      onChange={handleChangeEmpleadoForm}
-                      placeholder={
-                        editingEmpleadoId ? "Dejar en blanco para no cambiar" : "Ingrese su contraseña (mín. 6 caracteres)"
-                      }
-                      autoComplete="new-password"
-                      required={!editingEmpleadoId}
-                    />
-                  </div>
-                  <div>
-                    <label className="block mb-1 font-medium text-gray-700">Teléfono</label>
-                    <input name="telefono" value={empleadoForm.telefono} onChange={handleChangeEmpleadoForm} className={inp} />
-                  </div>
-                  <div>
-                    <label className="block mb-1 font-medium text-gray-700">Rol</label>
-                    <select name="rol" value={empleadoForm.rol} onChange={handleChangeEmpleadoForm} className={inp}>
-                      <option value="Vendedor">Vendedor</option>
-                      <option value="Personal de despacho">Personal de despacho</option>
-                      <option value="Administrador de almacén">Administrador de almacén</option>
-                      <option value="Administrador de compras">Administrador de compras</option>
-                      <option value="Administrador de sistemas">Administrador de sistemas</option>
-                    </select>
-                  </div>
-                </div>
-                <div className="flex justify-end gap-3 px-6 py-4 border-t">
-                  <button type="button" onClick={cerrarModalEmpleado} className="px-4 py-2 rounded-full text-sm border border-gray-300 text-gray-600 hover:bg-gray-50">Cancelar</button>
-                  <button type="submit" className="px-4 py-2 rounded-full text-sm bg-emerald-700 text-white hover:bg-emerald-800">Guardar</button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
-      </section>
-    );
-
-    /* PRODUCTOS */
-    if (selectedSection === "productos") return (
-      <section className="flex-1 p-8">
-        <div className="bg-white border border-lime-200 rounded-3xl overflow-hidden">
-          <div className="px-8 py-4 border-b border-lime-100 flex justify-between items-center flex-wrap gap-2">
-            <h2 className="font-bold text-emerald-900">Listado de productos</h2>
-            <div className="flex gap-2">
+    if (selectedSection === "usuarios")
+      return (
+        <section className="flex-1 p-8 space-y-8">
+          <h1 className="text-2xl font-bold text-emerald-900">Usuarios</h1>
+          <div className="bg-white border border-lime-200 rounded-3xl overflow-hidden">
+            <div className="px-8 py-4 border-b border-lime-100 flex justify-between items-center">
+              <h2 className="text-sm font-bold text-emerald-900">Clientes</h2>
               <button
                 type="button"
-                onClick={() => {
-                  fetchProductos();
-                  window.dispatchEvent(new Event("swgfsm-stock-actualizado"));
-                }}
-                className="px-4 py-2 text-xs font-semibold rounded-full border border-emerald-700 text-emerald-800 hover:bg-emerald-50"
+                onClick={fetchClientes}
+                className="px-3 py-1.5 rounded-full text-xs font-semibold border border-emerald-200 text-emerald-800 hover:bg-emerald-50"
               >
                 Actualizar
               </button>
-              <button onClick={abrirModalNuevoProducto} className="px-4 py-2 text-xs font-semibold rounded-full bg-emerald-700 text-lime-50 hover:bg-emerald-800">+ Añadir producto</button>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-emerald-900 text-lime-50 text-left">
+                    {[
+                      "Nombres",
+                      "Apellidos",
+                      "Tipo",
+                      "Teléfono",
+                      "Correo",
+                      "Dirección",
+                      "Estado",
+                    ].map((h) => (
+                      <th key={h} className="px-4 py-3 font-semibold">
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {cargandoUsuarios ? (
+                    <tr>
+                      <td
+                        colSpan="7"
+                        className="px-4 py-8 text-center text-gray-400"
+                      >
+                        Cargando clientes…
+                      </td>
+                    </tr>
+                  ) : clientes.length === 0 ? (
+                    <tr>
+                      <td
+                        colSpan="7"
+                        className="px-4 py-8 text-center text-gray-400"
+                      >
+                        No hay clientes registrados. Los datos ingresados en
+                        Caja registradora al concretar una venta aparecerán
+                        aquí.
+                      </td>
+                    </tr>
+                  ) : (
+                    clientes.map((c) => (
+                      <tr key={c._id} className="border-t hover:bg-lime-50">
+                        <td className="px-4 py-2">{c.nombres}</td>
+                        <td className="px-4 py-2">{c.apellidos}</td>
+                        <td className="px-4 py-2">{c.tipoCliente}</td>
+                        <td className="px-4 py-2">{c.telefono || "—"}</td>
+                        <td className="px-4 py-2">{c.correo || "—"}</td>
+                        <td className="px-4 py-2">{c.direccion || "—"}</td>
+                        <td className="px-4 py-2">
+                          <span className="bg-emerald-100 text-emerald-800 text-xs font-semibold px-2 py-0.5 rounded-full">
+                            {c.estado}
+                          </span>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left">
-              <thead className="bg-emerald-900 text-lime-50">
-                <tr>
-                  {[
-                    "Producto",
-                    "Tipo",
-                    "Unidad",
-                    "P. venta",
-                    "Madura (kg)",
-                    "Verde (kg)",
-                    "Sazón (kg)",
-                    "Estado",
-                    "Acciones",
-                  ].map((h) => (
-                    <th key={h} className="px-4 py-3 font-semibold whitespace-nowrap">
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {productos.map((p) => {
-                  const tipo = p.tipo ?? p.categoriaId ?? "—";
-                  const u = p.unidadMedida || "kg";
-                  return (
-                    <tr key={p._id} className="border-b hover:bg-lime-50">
-                      <td className="px-4 py-2 font-medium">{p.nombre}</td>
-                      <td className="px-4 py-2">{tipo}</td>
-                      <td className="px-4 py-2">{u}</td>
-                      <td className="px-4 py-2">S/ {p.precioVenta}</td>
-                      <td className="px-4 py-2">{p.stockPaltaMadura ?? "—"}</td>
-                      <td className="px-4 py-2">{p.stockPaltaVerde ?? "—"}</td>
-                      <td className="px-4 py-2">{p.stockPaltaSazon ?? "—"}</td>
-                      <td className="px-4 py-2">
-                        <span
-                          className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
-                            p.estado === "ACTIVO" ? "bg-emerald-100 text-emerald-800" : "bg-gray-100 text-gray-600"
-                          }`}
-                        >
-                          {p.estado}
-                        </span>
+
+          <div className="bg-white border border-lime-200 rounded-3xl overflow-hidden">
+            <div className="px-8 py-4 border-b border-lime-100 flex justify-between items-center">
+              <h2 className="text-sm font-bold text-emerald-900">Empleados</h2>
+              <button
+                type="button"
+                onClick={abrirModalNuevoEmpleado}
+                className="px-4 py-1.5 rounded-full text-xs font-semibold bg-emerald-700 text-lime-50 hover:bg-emerald-600"
+              >
+                + Añadir
+              </button>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-emerald-900 text-lime-50 text-left">
+                    {[
+                      "Nombres",
+                      "Apellidos",
+                      "Correo",
+                      "Teléfono",
+                      "Rol",
+                      "Estado",
+                      "Acciones",
+                    ].map((h) => (
+                      <th key={h} className="px-4 py-3 font-semibold">
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {cargandoUsuarios ? (
+                    <tr>
+                      <td
+                        colSpan="7"
+                        className="px-4 py-8 text-center text-gray-400"
+                      >
+                        Cargando empleados…
                       </td>
-                      <td className="px-4 py-2">
-                        <div className="flex flex-wrap items-center gap-2">
+                    </tr>
+                  ) : empleados.length === 0 ? (
+                    <tr>
+                      <td
+                        colSpan="7"
+                        className="px-4 py-8 text-center text-gray-400"
+                      >
+                        No hay empleados. Usa &quot;+ Añadir&quot; para
+                        registrar uno en la base de datos.
+                      </td>
+                    </tr>
+                  ) : (
+                    empleados.map((e) => (
+                      <tr key={e._id} className="border-t hover:bg-lime-50">
+                        <td className="px-4 py-2">{e.nombres}</td>
+                        <td className="px-4 py-2">{e.apellidos}</td>
+                        <td className="px-4 py-2">{e.correo}</td>
+                        <td className="px-4 py-2">{e.telefono || "—"}</td>
+                        <td className="px-4 py-2">{e.rol}</td>
+                        <td className="px-4 py-2">
+                          <span className="bg-emerald-100 text-emerald-800 text-xs font-semibold px-2 py-0.5 rounded-full">
+                            {e.estado}
+                          </span>
+                        </td>
+                        <td className="px-4 py-2">
                           <button
                             type="button"
-                            onClick={() => abrirModalEditarProducto(p)}
-                            className="px-3 py-1 text-xs rounded-full bg-amber-500 text-white hover:bg-amber-600"
+                            onClick={() => abrirModalEditarEmpleado(e)}
+                            className="text-xs font-semibold text-emerald-800 hover:underline"
                           >
                             Editar
                           </button>
-                          <button
-                            type="button"
-                            onClick={() => eliminarProducto(p)}
-                            className="px-3 py-1 text-xs rounded-full bg-red-600 text-white hover:bg-red-700"
-                          >
-                            Eliminar
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-                {productos.length === 0 && (
-                  <tr>
-                    <td colSpan="9" className="text-center py-6 text-gray-400">
-                      No hay productos registrados.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {showProductoModal && (
-          <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40">
-            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl p-6 overflow-y-auto max-h-[90vh]">
-              <h2 className="text-lg font-bold mb-4 text-emerald-900">{modoEditarProducto ? "Editar" : "Nuevo"} Producto</h2>
-              <form onSubmit={handleSubmitProducto} className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold mb-1 text-gray-600">Producto</label>
-                  <input
-                    className={inp}
-                    type="text"
-                    name="nombre"
-                    value={productoActual.nombre || ""}
-                    onChange={handleChangeProducto}
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold mb-1 text-gray-600">Tipo</label>
-                  <input className={inp} type="text" name="tipo" value={productoActual.tipo || ""} onChange={handleChangeProducto} />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold mb-1 text-gray-600">Unidad de medida (kg)</label>
-                  <input className={inp} type="text" name="unidadMedida" value={productoActual.unidadMedida || "kg"} onChange={handleChangeProducto} />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold mb-1 text-gray-600">Precio venta</label>
-                  <input
-                    className={inp}
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    name="precioVenta"
-                    value={productoActual.precioVenta || ""}
-                    onChange={handleChangeProducto}
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold mb-1 text-gray-600">Stock palta madura (kg)</label>
-                  <input
-                    className={inp}
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    name="stockPaltaMadura"
-                    value={productoActual.stockPaltaMadura ?? ""}
-                    onChange={handleChangeProducto}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold mb-1 text-gray-600">Stock palta verde (kg)</label>
-                  <input
-                    className={inp}
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    name="stockPaltaVerde"
-                    value={productoActual.stockPaltaVerde ?? ""}
-                    onChange={handleChangeProducto}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold mb-1 text-gray-600">Stock palta sazón (kg)</label>
-                  <input
-                    className={inp}
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    name="stockPaltaSazon"
-                    value={productoActual.stockPaltaSazon ?? ""}
-                    onChange={handleChangeProducto}
-                  />
-                </div>
-                <div className="col-span-2">
-                  <label className="block text-xs font-bold mb-1 text-gray-600">Detalle</label>
-                  <textarea className={inp} name="detalle" value={productoActual.detalle || ""} onChange={handleChangeProducto} rows={2} />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold mb-1 text-gray-600">Tamaño</label>
-                  <input className={inp} type="text" name="tamano" value={productoActual.tamano || ""} onChange={handleChangeProducto} />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold mb-1 text-gray-600">Estado</label>
-                  <select className={inp} name="estado" value={productoActual.estado} onChange={handleChangeProducto}>
-                    <option value="ACTIVO">ACTIVO</option>
-                    <option value="INACTIVO">INACTIVO</option>
-                  </select>
-                </div>
-                <div className="col-span-2">
-                  <label className="block text-xs font-bold mb-1 text-gray-600">Descripción</label>
-                  <textarea className={inp} name="descripcion" value={productoActual.descripcion || ""} onChange={handleChangeProducto} rows={2} />
-                </div>
-                <div className="col-span-2 flex justify-end gap-3 pt-4 border-t">
-                  <button type="button" onClick={() => setShowProductoModal(false)} className="px-4 py-2 border rounded-full text-gray-600 hover:bg-gray-50">Cancelar</button>
-                  <button type="submit" className="px-4 py-2 bg-emerald-700 text-white rounded-full hover:bg-emerald-800">Guardar</button>
-                </div>
-              </form>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>
-        )}
-      </section>
-    );
+
+          {showEmpleadoModal && (
+            <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40">
+              <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+                <form onSubmit={handleSubmitEmpleado}>
+                  <div className="flex items-center justify-between px-6 py-4 border-b">
+                    <h2 className="text-base font-bold text-gray-900">
+                      {editingEmpleadoId ? "Editar empleado" : "Nuevo empleado"}
+                    </h2>
+                    <button
+                      type="button"
+                      onClick={cerrarModalEmpleado}
+                      className="text-gray-400 hover:text-gray-600 text-xl"
+                    >
+                      &times;
+                    </button>
+                  </div>
+                  <div className="px-6 py-4 space-y-3 text-sm">
+                    <div>
+                      <label
+                        htmlFor="emp-nombres"
+                        className="block mb-1 font-medium text-gray-700"
+                      >
+                        Nombres
+                      </label>
+                      <input
+                        id="emp-nombres"
+                        name="nombres"
+                        value={empleadoForm.nombres}
+                        onChange={handleChangeEmpleadoForm}
+                        className={inp}
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label
+                        htmlFor="emp-apellidos"
+                        className="block mb-1 font-medium text-gray-700"
+                      >
+                        Apellidos
+                      </label>
+                      <input
+                        id="emp-apellidos"
+                        name="apellidos"
+                        value={empleadoForm.apellidos}
+                        onChange={handleChangeEmpleadoForm}
+                        className={inp}
+                      />
+                    </div>
+                    <div>
+                      <label
+                        htmlFor="emp-correo"
+                        className="block mb-1 font-medium text-gray-700"
+                      >
+                        Correo *
+                      </label>
+                      <input
+                        id="emp-correo"
+                        type="email"
+                        name="correo"
+                        value={empleadoForm.correo}
+                        onChange={handleChangeEmpleadoForm}
+                        className={inp}
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block mb-1 font-medium text-gray-700">
+                        Contraseña {editingEmpleadoId ? "(opcional)" : "*"}
+                      </label>
+                      <PasswordInput
+                        name="password"
+                        value={empleadoForm.password}
+                        onChange={handleChangeEmpleadoForm}
+                        placeholder={
+                          editingEmpleadoId
+                            ? "Dejar en blanco para no cambiar"
+                            : "Ingrese su contraseña (mín. 6 caracteres)"
+                        }
+                        autoComplete="new-password"
+                        required={!editingEmpleadoId}
+                      />
+                    </div>
+                    <div>
+                      <label
+                        htmlFor="emp-telefono"
+                        className="block mb-1 font-medium text-gray-700"
+                      >
+                        Teléfono
+                      </label>
+                      <input
+                        id="emp-telefono"
+                        name="telefono"
+                        value={empleadoForm.telefono}
+                        onChange={handleChangeEmpleadoForm}
+                        className={inp}
+                      />
+                    </div>
+                    <div>
+                      <label
+                        htmlFor="emp-rol"
+                        className="block mb-1 font-medium text-gray-700"
+                      >
+                        Rol
+                      </label>
+                      <select
+                        id="emp-rol"
+                        name="rol"
+                        value={empleadoForm.rol}
+                        onChange={handleChangeEmpleadoForm}
+                        className={inp}
+                      >
+                        <option value="Vendedor">Vendedor</option>
+                        <option value="Personal de despacho">
+                          Personal de despacho
+                        </option>
+                        <option value="Administrador de almacén">
+                          Administrador de almacén
+                        </option>
+                        <option value="Administrador de compras">
+                          Administrador de compras
+                        </option>
+                        <option value="Administrador de sistemas">
+                          Administrador de sistemas
+                        </option>
+                      </select>
+                    </div>
+                  </div>
+                  <div className="flex justify-end gap-3 px-6 py-4 border-t">
+                    <button
+                      type="button"
+                      onClick={cerrarModalEmpleado}
+                      className="px-4 py-2 rounded-full text-sm border border-gray-300 text-gray-600 hover:bg-gray-50"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-4 py-2 rounded-full text-sm bg-emerald-700 text-white hover:bg-emerald-800"
+                    >
+                      Guardar
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+        </section>
+      );
+
+    /* PRODUCTOS */
+    if (selectedSection === "productos")
+      return (
+        <section className="flex-1 p-8 space-y-8">
+          <div className="bg-white border border-lime-200 rounded-3xl overflow-hidden">
+            <div className="px-8 py-4 border-b border-lime-100 flex justify-between items-center flex-wrap gap-2">
+              <h2 className="font-bold text-emerald-900">
+                Listado de productos
+              </h2>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    fetchProductos();
+                    fetchPromociones();
+                    window.dispatchEvent(new Event("swgfsm-stock-actualizado"));
+                  }}
+                  className="px-4 py-2 text-xs font-semibold rounded-full border border-emerald-700 text-emerald-800 hover:bg-emerald-50"
+                >
+                  Actualizar
+                </button>
+                <button
+                  onClick={abrirModalNuevoProducto}
+                  className="px-4 py-2 text-xs font-semibold rounded-full bg-emerald-700 text-lime-50 hover:bg-emerald-800"
+                >
+                  + Añadir producto
+                </button>
+              </div>
+            </div>
+            <p className="px-8 pb-3 text-xs text-gray-500 border-b border-lime-100">
+              Descuentos online: puedes usar el mismo código en todas las variedades. Solo aplica
+              a palta madura en la tienda web, hasta agotar stock maduro. Verde y sazón no tienen
+              descuento.
+            </p>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm text-left">
+                <thead className="bg-emerald-900 text-lime-50">
+                  <tr>
+                    {[
+                      "Producto",
+                      "Tipo",
+                      "Unidad",
+                      "P. venta",
+                      "Madura (kg)",
+                      "Verde (kg)",
+                      "Sazón (kg)",
+                      "Estado",
+                      "Cód. descuento",
+                      "Descuento",
+                      "Acciones",
+                    ].map((h) => (
+                      <th
+                        key={h}
+                        className="px-4 py-3 font-semibold whitespace-nowrap"
+                      >
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {productos.map((p) => {
+                    const tipo = p.tipo ?? p.categoriaId ?? "—";
+                    const u = p.unidadMedida || "kg";
+                    return (
+                      <tr key={p._id} className="border-b hover:bg-lime-50">
+                        <td className="px-4 py-2 font-medium">{p.nombre}</td>
+                        <td className="px-4 py-2">{tipo}</td>
+                        <td className="px-4 py-2">{u}</td>
+                        <td className="px-4 py-2">S/ {p.precioVenta}</td>
+                        <td className="px-4 py-2">
+                          {p.stockPaltaMadura ?? "—"}
+                        </td>
+                        <td className="px-4 py-2">
+                          {p.stockPaltaVerde ?? "—"}
+                        </td>
+                        <td className="px-4 py-2">
+                          {p.stockPaltaSazon ?? "—"}
+                        </td>
+                        <td className="px-4 py-2">
+                          <span
+                            className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                              p.estado === "ACTIVO"
+                                ? "bg-emerald-100 text-emerald-800"
+                                : "bg-gray-100 text-gray-600"
+                            }`}
+                          >
+                            {p.estado}
+                          </span>
+                        </td>
+                        <td className="px-4 py-2 font-mono text-xs">
+                          {p.codigoDescuento || "—"}
+                        </td>
+                        <td className="px-4 py-2">
+                          <button
+                            type="button"
+                            onClick={() => cambiarEstadoDescuento(p)}
+                            disabled={!String(p.codigoDescuento || "").trim()}
+                            className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                              String(p.descuentoEstado || "").toUpperCase() ===
+                              "ACTIVO"
+                                ? "bg-emerald-100 text-emerald-800 hover:bg-emerald-200"
+                                : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                            } disabled:opacity-40 disabled:cursor-not-allowed`}
+                            title={
+                              p.codigoDescuento
+                                ? "Clic para activar/inactivar descuento online"
+                                : "Asigna código en Editar"
+                            }
+                          >
+                            {String(p.descuentoEstado || "INACTIVO").toUpperCase() ===
+                            "ACTIVO"
+                              ? "ACTIVO"
+                              : "INACTIVO"}
+                          </button>
+                        </td>
+                        <td className="px-4 py-2">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => abrirModalEditarProducto(p)}
+                              className="px-3 py-1 text-xs rounded-full bg-amber-500 text-white hover:bg-amber-600"
+                            >
+                              Editar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => eliminarProducto(p)}
+                              className="px-3 py-1 text-xs rounded-full bg-red-600 text-white hover:bg-red-700"
+                            >
+                              Eliminar
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {productos.length === 0 && (
+                    <tr>
+                      <td
+                        colSpan="11"
+                        className="text-center py-6 text-gray-400"
+                      >
+                        No hay productos registrados.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="bg-white border border-amber-200 rounded-3xl overflow-hidden">
+            <div className="px-8 py-4 border-b border-amber-100 flex justify-between items-center flex-wrap gap-2 bg-amber-50/40">
+              <div>
+                <h2 className="font-bold text-amber-950">
+                  Pack Familiar — Promociones
+                </h2>
+                <p className="text-xs text-amber-900/70 mt-1">
+                  Solo puedes crear un pack si esa variedad ya existe en el Listado
+                  de productos (activo). Al vender, se descuenta palta madura de ese
+                  producto.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={abrirModalNuevaPromocion}
+                className="px-4 py-2 text-xs font-semibold rounded-full bg-amber-600 text-white hover:bg-amber-700"
+              >
+                + Añadir promoción
+              </button>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm text-left">
+                <thead className="bg-amber-900 text-amber-50">
+                  <tr>
+                    {[
+                      "Nombre pack",
+                      "Variedad",
+                      "Precio pack",
+                      "Kg madura/pack",
+                      "Estado",
+                      "Acciones",
+                    ].map((h) => (
+                      <th
+                        key={h}
+                        className="px-4 py-3 font-semibold whitespace-nowrap"
+                      >
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {promociones.map((p) => (
+                      <tr key={p._id} className="border-b hover:bg-amber-50/50">
+                        <td className="px-4 py-2 font-medium">
+                          {p.nombre || "Pack Familiar"}
+                        </td>
+                        <td className="px-4 py-2">{p.variedad || "—"}</td>
+                        <td className="px-4 py-2 font-semibold text-amber-900">
+                          S/ {Number(p.precio || 0).toFixed(2)}
+                        </td>
+                        <td className="px-4 py-2">{p.kgMadura ?? 1} kg</td>
+                        <td className="px-4 py-2">
+                          <span
+                            className={`text-xs font-bold uppercase px-2 py-0.5 rounded-full ${
+                              String(p.estado || "").toUpperCase() === "ACTIVO"
+                                ? "bg-emerald-100 text-emerald-800"
+                                : "bg-gray-100 text-gray-500"
+                            }`}
+                          >
+                            {String(p.estado || "").toUpperCase() === "ACTIVO"
+                              ? "Activa"
+                              : "Inactiva"}
+                          </span>
+                        </td>
+                        <td className="px-4 py-2">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => abrirModalEditarPromocion(p)}
+                              className="px-3 py-1 text-xs rounded-full bg-amber-500 text-white hover:bg-amber-600"
+                            >
+                              Editar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => eliminarPromocion(p)}
+                              className="px-3 py-1 text-xs rounded-full bg-red-600 text-white hover:bg-red-700"
+                            >
+                              Eliminar
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  {promociones.length === 0 && (
+                    <tr>
+                      <td
+                        colSpan="6"
+                        className="text-center py-6 text-gray-400"
+                      >
+                        No hay promociones. Usa «+ Añadir promoción» (no requiere
+                        crear producto en el listado de arriba).
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {showProductoModal && (
+            <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40">
+              <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl p-6 overflow-y-auto max-h-[90vh]">
+                <h2 className="text-lg font-bold mb-4 text-emerald-900">
+                  {modoEditarProducto ? "Editar" : "Nuevo"} Producto
+                </h2>
+                <form
+                  onSubmit={handleSubmitProducto}
+                  className="grid grid-cols-2 gap-4"
+                >
+                  <div>
+                    <label className="block text-xs font-bold mb-1 text-gray-600">
+                      Producto
+                    </label>
+                    <input
+                      className={inp}
+                      type="text"
+                      name="nombre"
+                      value={productoActual.nombre || ""}
+                      onChange={handleChangeProducto}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold mb-1 text-gray-600">
+                      Tipo
+                    </label>
+                    <input
+                      className={inp}
+                      type="text"
+                      name="tipo"
+                      value={productoActual.tipo || ""}
+                      onChange={handleChangeProducto}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold mb-1 text-gray-600">
+                      Unidad de medida (kg)
+                    </label>
+                    <input
+                      className={inp}
+                      type="text"
+                      name="unidadMedida"
+                      value={productoActual.unidadMedida || "kg"}
+                      onChange={handleChangeProducto}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold mb-1 text-gray-600">
+                      Precio venta
+                    </label>
+                    <input
+                      className={inp}
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      name="precioVenta"
+                      value={productoActual.precioVenta || ""}
+                      onChange={handleChangeProducto}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold mb-1 text-gray-600">
+                      Stock palta madura (kg)
+                    </label>
+                    <input
+                      className={inp}
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      name="stockPaltaMadura"
+                      value={productoActual.stockPaltaMadura ?? ""}
+                      onChange={handleChangeProducto}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold mb-1 text-gray-600">
+                      Stock palta verde (kg)
+                    </label>
+                    <input
+                      className={inp}
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      name="stockPaltaVerde"
+                      value={productoActual.stockPaltaVerde ?? ""}
+                      onChange={handleChangeProducto}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold mb-1 text-gray-600">
+                      Stock palta sazón (kg)
+                    </label>
+                    <input
+                      className={inp}
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      name="stockPaltaSazon"
+                      value={productoActual.stockPaltaSazon ?? ""}
+                      onChange={handleChangeProducto}
+                    />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="block text-xs font-bold mb-1 text-gray-600">
+                      Detalle
+                    </label>
+                    <textarea
+                      className={inp}
+                      name="detalle"
+                      value={productoActual.detalle || ""}
+                      onChange={handleChangeProducto}
+                      rows={2}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold mb-1 text-gray-600">
+                      Tamaño
+                    </label>
+                    <input
+                      className={inp}
+                      type="text"
+                      name="tamano"
+                      value={productoActual.tamano || ""}
+                      onChange={handleChangeProducto}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold mb-1 text-gray-600">
+                      Estado producto
+                    </label>
+                    <select
+                      className={inp}
+                      name="estado"
+                      value={productoActual.estado}
+                      onChange={handleChangeProducto}
+                    >
+                      <option value="ACTIVO">ACTIVO</option>
+                      <option value="INACTIVO">INACTIVO</option>
+                    </select>
+                  </div>
+                  <div className="col-span-2 rounded-xl border border-amber-200 bg-amber-50/50 p-4">
+                    <p className="text-xs font-bold text-amber-950 mb-3">
+                      Descuento online (solo palta madura · hasta agotar stock)
+                    </p>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold mb-1 text-gray-600">
+                          Código descuento
+                        </label>
+                        <input
+                          className={inp}
+                          type="text"
+                          name="codigoDescuento"
+                          value={productoActual.codigoDescuento || ""}
+                          onChange={handleChangeProducto}
+                          placeholder="Ej. PMHSS15"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold mb-1 text-gray-600">
+                          % descuento
+                        </label>
+                        <input
+                          className={inp}
+                          type="number"
+                          min="0"
+                          max="100"
+                          step="1"
+                          name="descuentoPorcentaje"
+                          value={productoActual.descuentoPorcentaje ?? "15"}
+                          onChange={handleChangeProducto}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold mb-1 text-gray-600">
+                          Estado descuento
+                        </label>
+                        <select
+                          className={inp}
+                          name="descuentoEstado"
+                          value={productoActual.descuentoEstado || "INACTIVO"}
+                          onChange={handleChangeProducto}
+                        >
+                          <option value="ACTIVO">ACTIVO</option>
+                          <option value="INACTIVO">INACTIVO</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="col-span-2">
+                    <label className="block text-xs font-bold mb-1 text-gray-600">
+                      Descripción
+                    </label>
+                    <textarea
+                      className={inp}
+                      name="descripcion"
+                      value={productoActual.descripcion || ""}
+                      onChange={handleChangeProducto}
+                      rows={2}
+                    />
+                  </div>
+
+                  <div className="col-span-2 flex justify-end gap-3 pt-4 border-t">
+                    <button
+                      type="button"
+                      onClick={() => setShowProductoModal(false)}
+                      className="px-4 py-2 border rounded-full text-gray-600 hover:bg-gray-50"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-4 py-2 bg-emerald-700 text-white rounded-full hover:bg-emerald-800"
+                    >
+                      Guardar
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {showPromocionModal && (
+            <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40">
+              <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl p-6 overflow-y-auto max-h-[90vh]">
+                <h2 className="text-lg font-bold mb-1 text-amber-950">
+                  {modoEditarPromocion ? "Editar" : "Nueva"} promoción — Pack Familiar
+                </h2>
+                <p className="text-xs text-gray-500 mb-4">
+                  La variedad elegida debe existir en el Listado de productos (activo).
+                  Al vender, se descuenta palta madura de ese producto por kg.
+                </p>
+                {variedadesPromoPermitidas.length === 0 && (
+                  <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-xl px-3 py-2 mb-4">
+                    No hay productos en el listado para vincular un pack. Registra
+                    primero Palta Fuerte, Hass, Hall o Naval en la tabla superior.
+                  </p>
+                )}
+                <form
+                  onSubmit={handleSubmitPromocion}
+                  className="grid grid-cols-2 gap-4"
+                >
+                  <div>
+                    <label className="block text-xs font-bold mb-1 text-gray-600">
+                      Variedad de palta
+                    </label>
+                    <select
+                      className={inp}
+                      name="variedad"
+                      value={promocionActual.variedad || ""}
+                      onChange={handleChangePromocion}
+                      required
+                      disabled={variedadesPromoPermitidas.length === 0}
+                    >
+                      <option value="">Seleccionar variedad…</option>
+                      {VARIEDADES_PALTA.map((v) => {
+                        const enCatalogo = productoCatalogoPorVariedadPromo.get(v);
+                        const esActual =
+                          modoEditarPromocion && promocionActual.variedad === v;
+                        if (!enCatalogo && !esActual) {
+                          return (
+                            <option key={v} value={v} disabled>
+                              {v} — no registrado en listado de productos
+                            </option>
+                          );
+                        }
+                        const tipo =
+                          enCatalogo?.tipo ?? enCatalogo?.categoriaId ?? v;
+                        return (
+                          <option key={v} value={v}>
+                            {v}
+                            {enCatalogo
+                              ? ` · ${enCatalogo.nombre} (${tipo})`
+                              : " — sin producto en catálogo"}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold mb-1 text-gray-600">
+                      Estado promoción
+                    </label>
+                    <select
+                      className={inp}
+                      name="estado"
+                      value={promocionActual.estado || "ACTIVO"}
+                      onChange={handleChangePromocion}
+                    >
+                      <option value="ACTIVO">ACTIVO (visible en tienda)</option>
+                      <option value="INACTIVO">INACTIVO (oculta en tienda)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold mb-1 text-gray-600">
+                      Nombre promoción
+                    </label>
+                    <input
+                      className={inp}
+                      type="text"
+                      name="nombre"
+                      value={promocionActual.nombre || "Pack Familiar"}
+                      onChange={handleChangePromocion}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold mb-1 text-gray-600">
+                      Precio promoción (S/)
+                    </label>
+                    <input
+                      className={inp}
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      name="precio"
+                      value={promocionActual.precio ?? ""}
+                      onChange={handleChangePromocion}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold mb-1 text-gray-600">
+                      Kg palta madura por pack
+                    </label>
+                    <input
+                      className={inp}
+                      type="number"
+                      step="0.01"
+                      min="0.01"
+                      name="kgMadura"
+                      value={promocionActual.kgMadura ?? "1"}
+                      onChange={handleChangePromocion}
+                    />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="block text-xs font-bold mb-1 text-gray-600">
+                      Descripción promoción
+                    </label>
+                    <textarea
+                      className={inp}
+                      name="descripcion"
+                      value={promocionActual.descripcion || ""}
+                      onChange={handleChangePromocion}
+                      rows={2}
+                      placeholder="Ej. Pack familiar con paltas maduras para ensalada."
+                    />
+                  </div>
+                  <div className="col-span-2 flex justify-end gap-3 pt-4 border-t">
+                    <button
+                      type="button"
+                      onClick={() => setShowPromocionModal(false)}
+                      className="px-4 py-2 border rounded-full text-gray-600 hover:bg-gray-50"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={
+                        !modoEditarPromocion &&
+                        variedadesPromoPermitidas.length === 0
+                      }
+                      className="px-4 py-2 bg-amber-600 text-white rounded-full hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Guardar promoción
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+        </section>
+      );
 
     /* INVENTARIO */
-    if (selectedSection === "inventario") return (
-      <section className="flex-1 p-8">
-        <div className="bg-white border border-lime-200 rounded-3xl overflow-hidden">
-          <div className="px-8 py-4 border-b border-lime-100 flex justify-between items-center">
-            <h2 className="font-bold text-emerald-900">Inventario de paltas</h2>
-            <button
-              onClick={() => {
-                setModoEditarInventario(false);
-                setInventarioEditId(null);
-                setNuevoInventario({ fecha: "", proveedor: "", numeroPuesto: "", producto: "", tipo: "", tamano: "", detalle: "", cantidad: "", precioCompra: "", totalInvertido: "" });
-                setShowRegistroInventarioModal(true);
-              }}
-              className="px-4 py-2 text-xs font-semibold rounded-full bg-emerald-700 text-lime-50 hover:bg-emerald-800"
-            >
-              + Agregar registro
-            </button>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left">
-              <thead className="bg-emerald-900 text-lime-50">
-                <tr>
-                  {["Fecha","Proveedor","Puesto","Producto","Tipo","Tamaño","Detalle","Cant. (kg)","Precio de compra","Total invertido","Acciones"].map(h => (
-                    <th key={h} className="px-4 py-3">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {inventario.length === 0
-                  ? <tr><td colSpan="11" className="p-6 text-center text-gray-400">No hay registros de inventario.</td></tr>
-                  : inventario.map(inv => (
-                    <tr key={inv._id} className="border-b hover:bg-lime-50">
-                      <td className="px-4 py-2">{inv.fecha ? new Date(inv.fecha).toLocaleDateString() : "—"}</td>
-                      <td className="px-4 py-2">{inv.proveedor}</td>
-                      <td className="px-4 py-2">{inv.numeroPuesto}</td>
-                      <td className="px-4 py-2">{inv.producto}</td>
-                      <td className="px-4 py-2">{inv.tipo}</td>
-                      <td className="px-4 py-2">{inv.tamano}</td>
-                      <td className="px-4 py-2">{inv.detalle}</td>
-                      <td className="px-4 py-2 font-bold">{inv.cantidad} kg</td>
-                      <td className="px-4 py-2">S/ {inv.precioCompra ?? inv.precio}</td>
-                      <td className="px-4 py-2 text-emerald-700 font-bold">S/ {inv.totalInvertido ?? inv.pago}</td>
-                      <td className="px-4 py-2">
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => abrirEditarInventario(inv)}
-                            className="bg-amber-500 hover:bg-amber-600 text-white text-xs font-semibold px-4 py-1.5 rounded-full shadow-sm"
-                          >
-                            Editar
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => eliminarInventario(inv)}
-                            className="bg-red-600 hover:bg-red-700 text-white text-xs font-semibold px-4 py-1.5 rounded-full shadow-sm"
-                          >
-                            Eliminar
-                          </button>
-                        </div>
+    if (selectedSection === "inventario")
+      return (
+        <section className="flex-1 p-8">
+          <div className="bg-white border border-lime-200 rounded-3xl overflow-hidden">
+            <div className="px-8 py-4 border-b border-lime-100 flex justify-between items-center">
+              <h2 className="font-bold text-emerald-900">
+                Inventario de paltas
+              </h2>
+              <button
+                onClick={() => {
+                  setModoEditarInventario(false);
+                  setInventarioEditId(null);
+                  setNuevoInventario({
+                    fecha: "",
+                    proveedor: "",
+                    numeroPuesto: "",
+                    producto: "",
+                    tipo: "",
+                    tamano: "",
+                    detalle: "",
+                    cantidad: "",
+                    precioCompra: "",
+                    totalInvertido: "",
+                  });
+                  setShowRegistroInventarioModal(true);
+                }}
+                className="px-4 py-2 text-xs font-semibold rounded-full bg-emerald-700 text-lime-50 hover:bg-emerald-800"
+              >
+                + Agregar registro
+              </button>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm text-left">
+                <thead className="bg-emerald-900 text-lime-50">
+                  <tr>
+                    {[
+                      "Fecha",
+                      "Proveedor",
+                      "Puesto",
+                      "Producto",
+                      "Tipo",
+                      "Tamaño",
+                      "Detalle",
+                      "Cant. (kg)",
+                      "Precio de compra",
+                      "Total invertido",
+                      "Acciones",
+                    ].map((h) => (
+                      <th key={h} className="px-4 py-3">
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {!Array.isArray(inventario) || inventario.length === 0 ? (
+                    <tr>
+                      <td
+                        colSpan="11"
+                        className="p-6 text-center text-gray-400"
+                      >
+                        No hay registros de inventario.
                       </td>
                     </tr>
-                  ))}
-              </tbody>
-            </table>
+                  ) : (
+                    inventario.map((inv) => (
+                      <tr key={inv._id} className="border-b hover:bg-lime-50">
+                        <td className="px-4 py-2">
+                          {inv.fecha
+                            ? new Date(inv.fecha).toLocaleDateString()
+                            : "—"}
+                        </td>
+                        <td className="px-4 py-2">{inv.proveedor}</td>
+                        <td className="px-4 py-2">{inv.numeroPuesto}</td>
+                        <td className="px-4 py-2">{inv.producto}</td>
+                        <td className="px-4 py-2">{inv.tipo}</td>
+                        <td className="px-4 py-2">{inv.tamano}</td>
+                        <td className="px-4 py-2">{inv.detalle}</td>
+                        <td className="px-4 py-2 font-bold">
+                          {inv.cantidad} kg
+                        </td>
+                        <td className="px-4 py-2">
+                          S/ {inv.precioCompra ?? inv.precio}
+                        </td>
+                        <td className="px-4 py-2 text-emerald-700 font-bold">
+                          S/ {inv.totalInvertido ?? inv.pago}
+                        </td>
+                        <td className="px-4 py-2">
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => abrirEditarInventario(inv)}
+                              className="bg-amber-500 hover:bg-amber-600 text-white text-xs font-semibold px-4 py-1.5 rounded-full shadow-sm"
+                            >
+                              Editar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => eliminarInventario(inv)}
+                              className="bg-red-600 hover:bg-red-700 text-white text-xs font-semibold px-4 py-1.5 rounded-full shadow-sm"
+                            >
+                              Eliminar
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
 
-        {showRegistroInventarioModal && (
-          <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40">
-            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto p-6">
-              <h2 className="text-lg font-bold mb-4 text-emerald-900">
-                {modoEditarInventario ? "Editar registro de inventario" : "Nuevo registro de inventario"}
-              </h2>
-              <form onSubmit={handleSubmitInventario} className="grid grid-cols-2 gap-4">
-                <div><label className="block text-xs font-bold mb-1 text-gray-600">Fecha</label><input type="date" name="fecha" className={inp} value={nuevoInventario.fecha} onChange={handleChangeInventario} required /></div>
-                <div className="col-span-2"><label className="block text-xs font-bold mb-1 text-gray-600">Proveedor</label><input type="text" name="proveedor" className={inp} value={nuevoInventario.proveedor} onChange={handleChangeInventario} required /></div>
-                <div><label className="block text-xs font-bold mb-1 text-gray-600">N° de puesto</label><input type="text" name="numeroPuesto" className={inp} value={nuevoInventario.numeroPuesto} onChange={handleChangeInventario} /></div>
-                <div><label className="block text-xs font-bold mb-1 text-gray-600">Producto</label><input type="text" name="producto" className={inp} value={nuevoInventario.producto} onChange={handleChangeInventario} required /></div>
-                <div><label className="block text-xs font-bold mb-1 text-gray-600">Tipo</label><input type="text" name="tipo" className={inp} value={nuevoInventario.tipo} onChange={handleChangeInventario} /></div>
-                <div><label className="block text-xs font-bold mb-1 text-gray-600">Tamaño</label><input type="text" name="tamano" className={inp} value={nuevoInventario.tamano} onChange={handleChangeInventario} /></div>
-                <div className="col-span-2"><label className="block text-xs font-bold mb-1 text-gray-600">Detalle</label><input type="text" name="detalle" className={inp} value={nuevoInventario.detalle} onChange={handleChangeInventario} /></div>
-                <div>
-                  <label className="block text-xs font-bold mb-1 text-gray-600">Cantidad (kg)</label>
-                  <div className="flex items-center gap-2">
+          {showRegistroInventarioModal && (
+            <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40">
+              <div className="bg-white rounded-3xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto p-6">
+                <h2 className="text-lg font-bold mb-4 text-emerald-900">
+                  {modoEditarInventario
+                    ? "Editar registro de inventario"
+                    : "Nuevo registro de inventario"}
+                </h2>
+                <form
+                  onSubmit={handleSubmitInventario}
+                  className="grid grid-cols-2 gap-4"
+                >
+                  <div>
+                    <label className="block text-xs font-bold mb-1 text-gray-600">
+                      Fecha
+                    </label>
                     <input
-                      type="number"
-                      name="cantidad"
-                      min="0"
-                      step="0.01"
+                      type="date"
+                      name="fecha"
                       className={inp}
-                      value={nuevoInventario.cantidad}
+                      value={nuevoInventario.fecha}
                       onChange={handleChangeInventario}
                       required
                     />
-                    <span className="text-sm font-semibold text-emerald-800 shrink-0">kg</span>
                   </div>
-                </div>
-                <div><label className="block text-xs font-bold mb-1 text-gray-600">Precio de compra</label><input type="number" step="0.01" name="precioCompra" className={inp} value={nuevoInventario.precioCompra} onChange={handleChangeInventario} required /></div>
-                <div><label className="block text-xs font-bold mb-1 text-gray-600">Total invertido</label><input type="number" step="0.01" name="totalInvertido" className={inp} value={nuevoInventario.totalInvertido} onChange={handleChangeInventario} required /></div>
-                <div className="col-span-2 flex justify-end gap-3 pt-4 border-t">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowRegistroInventarioModal(false);
-                      setModoEditarInventario(false);
-                      setInventarioEditId(null);
-                    }}
-                    className="px-4 py-2 rounded-full border border-gray-300 text-gray-600 hover:bg-gray-50"
-                  >
-                    Cancelar
-                  </button>
-                  <button type="submit" className="px-4 py-2 rounded-full bg-emerald-700 text-white hover:bg-emerald-800">
-                    {modoEditarInventario ? "Guardar cambios" : "Guardar"}
-                  </button>
-                </div>
-              </form>
+                  <div className="col-span-2">
+                    <label className="block text-xs font-bold mb-1 text-gray-600">
+                      Proveedor
+                    </label>
+                    <input
+                      type="text"
+                      name="proveedor"
+                      className={inp}
+                      value={nuevoInventario.proveedor}
+                      onChange={handleChangeInventario}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold mb-1 text-gray-600">
+                      N° de puesto
+                    </label>
+                    <input
+                      type="text"
+                      name="numeroPuesto"
+                      className={inp}
+                      value={nuevoInventario.numeroPuesto}
+                      onChange={handleChangeInventario}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold mb-1 text-gray-600">
+                      Producto
+                    </label>
+                    <input
+                      type="text"
+                      name="producto"
+                      className={inp}
+                      value={nuevoInventario.producto}
+                      onChange={handleChangeInventario}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold mb-1 text-gray-600">
+                      Tipo
+                    </label>
+                    <input
+                      type="text"
+                      name="tipo"
+                      className={inp}
+                      value={nuevoInventario.tipo}
+                      onChange={handleChangeInventario}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold mb-1 text-gray-600">
+                      Tamaño
+                    </label>
+                    <input
+                      type="text"
+                      name="tamano"
+                      className={inp}
+                      value={nuevoInventario.tamano}
+                      onChange={handleChangeInventario}
+                    />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="block text-xs font-bold mb-1 text-gray-600">
+                      Detalle
+                    </label>
+                    <input
+                      type="text"
+                      name="detalle"
+                      className={inp}
+                      value={nuevoInventario.detalle}
+                      onChange={handleChangeInventario}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold mb-1 text-gray-600">
+                      Cantidad (kg)
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        name="cantidad"
+                        min="0"
+                        step="0.01"
+                        className={inp}
+                        value={nuevoInventario.cantidad}
+                        onChange={handleChangeInventario}
+                        required
+                      />
+                      <span className="text-sm font-semibold text-emerald-800 shrink-0">
+                        kg
+                      </span>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold mb-1 text-gray-600">
+                      Precio de compra
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      name="precioCompra"
+                      className={inp}
+                      value={nuevoInventario.precioCompra}
+                      onChange={handleChangeInventario}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold mb-1 text-gray-600">
+                      Total invertido
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      name="totalInvertido"
+                      className={inp}
+                      value={nuevoInventario.totalInvertido}
+                      onChange={handleChangeInventario}
+                      required
+                    />
+                  </div>
+                  <div className="col-span-2 flex justify-end gap-3 pt-4 border-t">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowRegistroInventarioModal(false);
+                        setModoEditarInventario(false);
+                        setInventarioEditId(null);
+                      }}
+                      className="px-4 py-2 rounded-full border border-gray-300 text-gray-600 hover:bg-gray-50"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-4 py-2 rounded-full bg-emerald-700 text-white hover:bg-emerald-800"
+                    >
+                      {modoEditarInventario ? "Guardar cambios" : "Guardar"}
+                    </button>
+                  </div>
+                </form>
+              </div>
             </div>
-          </div>
-        )}
-      </section>
-    );
+          )}
+        </section>
+      );
 
     /* PROVEEDORES */
     if (selectedSection === "proveedores") return <ProveedoresTable />;
@@ -1556,23 +2850,28 @@ const AdminDashboard = () => {
     <div className="min-h-screen flex bg-lime-100 font-sans">
       <aside className="w-64 bg-emerald-950 text-lime-50 flex flex-col shadow-2xl z-10 flex-shrink-0">
         <div className="p-6 border-b border-emerald-800">
-          <p className="text-xs text-emerald-400 uppercase tracking-widest mb-1">
-            {isPanelVendedor(trabajadorSesion) ? "Panel vendedor" : "Panel Admin"}
+          <h1 className="text-sm font-bold leading-snug tracking-wide text-white uppercase">
+            FRUTERIA SEÑOR DE MURUHUAY
+          </h1>
+          <p className="text-xs text-emerald-300/95 mt-3 uppercase tracking-wide">
+            ROL: {etiquetaRolSidebar(trabajadorSesion)}
           </p>
-          <h1 className="text-base font-bold leading-tight">Frutería Señor de Muruhuay</h1>
-          {trabajadorSesion?.nombres && (
-            <p className="text-xs text-emerald-300/90 mt-2">
-              {trabajadorSesion.nombres} {trabajadorSesion.apellidos || ""}
+          {nombreCompletoSidebar(trabajadorSesion) && (
+            <p className="text-xs text-emerald-300/95 mt-1.5 uppercase tracking-wide">
+              NOMBRE: {nombreCompletoSidebar(trabajadorSesion)}
             </p>
           )}
         </div>
 
+        <Toaster position="bottom-center" richColors success/>
         <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
           {menuSectionKeys.map((sec) => (
             <button
               key={sec}
               className={menuBtnClasses(sec)}
-              onClick={() => { setSelectedSection(sec); setModoNuevaVenta(false); }}
+              onClick={() => {
+                setSelectedSection(sec);
+              }}
             >
               {sectionLabels[sec]}
             </button>
@@ -1580,7 +2879,10 @@ const AdminDashboard = () => {
         </nav>
 
         <div className="p-5 border-t border-emerald-800">
-          <button onClick={() => setShowLogoutModal(true)} className="w-full bg-red-600/80 hover:bg-red-600 py-2.5 rounded-xl text-white text-sm font-semibold transition">
+          <button
+            onClick={() => setShowLogoutModal(true)}
+            className="w-full bg-red-600/80 hover:bg-red-600 py-2.5 rounded-xl text-white text-sm font-semibold transition"
+          >
             Cerrar sesión
           </button>
         </div>
@@ -1588,9 +2890,14 @@ const AdminDashboard = () => {
 
       <main className="flex-1 flex flex-col h-screen overflow-y-auto bg-lime-50">
         <header className="flex justify-between p-5 bg-white border-b sticky top-0 z-10 shadow-sm items-center">
-          <h1 className="text-xl font-bold text-emerald-900">{sectionLabels[selectedSection]}</h1>
+          <h1 className="text-xl font-bold text-emerald-900">
+            {sectionLabels[selectedSection]}
+          </h1>
           <div className="flex items-center gap-3">
-            <button onClick={handleBack} className="text-sm text-emerald-700 font-semibold hover:underline">
+            <button
+              onClick={handleBack}
+              className="text-sm text-emerald-700 font-semibold hover:underline"
+            >
               Volver
             </button>
           </div>
@@ -1598,7 +2905,12 @@ const AdminDashboard = () => {
         {renderContent()}
       </main>
 
-      {showLogoutModal && <LogoutModal onConfirm={confirmLogout} onCancel={() => setShowLogoutModal(false)} />}
+      {showLogoutModal && (
+        <LogoutModal
+          onConfirm={confirmLogout}
+          onCancel={() => setShowLogoutModal(false)}
+        />
+      )}
     </div>
   );
 };

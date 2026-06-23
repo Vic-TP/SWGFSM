@@ -2,6 +2,7 @@
 
 const express = require('express');
 const Producto = require('../models/Producto');
+const verifyJWT = require('../middleware/verifyJWT');
 
 const router = express.Router();
 
@@ -80,12 +81,27 @@ const bodyToProducto = (body) => {
     detalle: String(b.detalle || '').trim(),
     tamano: String(b.tamano || '').trim(),
     descripcion: String(b.descripcion || '').trim(),
-    estado: b.estado || 'ACTIVO'
+    estado: b.estado || 'ACTIVO',
+    codigoDescuento: String(b.codigoDescuento || '').trim().toUpperCase(),
+    descuentoEstado:
+      String(b.descuentoEstado || 'INACTIVO').toUpperCase() === 'ACTIVO'
+        ? 'ACTIVO'
+        : 'INACTIVO',
+    descuentoPorcentaje: Math.min(
+      100,
+      Math.max(0, num(b.descuentoPorcentaje, 15))
+    ),
+    promocionActiva: Boolean(b.promocionActiva),
+    promocionVariedad: String(b.promocionVariedad || b.tipo || '').trim(),
+    promocionNombre: String(b.promocionNombre || 'Pack Familiar').trim() || 'Pack Familiar',
+    promocionPrecio: num(b.promocionPrecio, 0),
+    promocionDescripcion: String(b.promocionDescripcion || '').trim(),
+    promocionKgMadura: Math.max(0.01, num(b.promocionKgMadura, 1))
   };
 };
 
 // CREAR PRODUCTO (POST)
-router.post('/', async (req, res) => {
+router.post('/', verifyJWT, async (req, res) => {
   try {
     const payload = bodyToProducto(req.body);
     if (!payload.nombre) {
@@ -101,7 +117,7 @@ router.post('/', async (req, res) => {
 });
 
 // ACTUALIZAR PRODUCTO (PUT)
-router.put('/:id', async (req, res) => {
+router.put('/:id', verifyJWT, async (req, res) => {
   try {
     const payload = bodyToProducto(req.body);
     const productoActualizado = await Producto.findByIdAndUpdate(
@@ -120,7 +136,7 @@ router.put('/:id', async (req, res) => {
 });
 
 // ELIMINAR PRODUCTO (DELETE)
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', verifyJWT, async (req, res) => {
   try {
     const productoEliminado = await Producto.findByIdAndDelete(req.params.id);
     if (!productoEliminado) {

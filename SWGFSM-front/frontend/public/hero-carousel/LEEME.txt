@@ -1,0 +1,11 @@
+El carrusel del inicio usa estas imágenes (importadas desde el código):
+
+  src/assets/palta-hass.png
+  src/assets/palta-naval.png
+  src/assets/proceso/chacra.png
+  src/assets/palta-selva.png
+
+Para usar TUS fotos: sustituye cada archivo anterior conservando el mismo nombre y extensión,
+luego ejecuta de nuevo `npm start` o `npm run build`.
+
+Esta carpeta (public/hero-carousel) ya no es necesaria para el carrusel; puedes borrarla si quieres.

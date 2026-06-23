@@ -1,19 +1,22 @@
 // backend/routes/clienteRoutes.js
 
-const express = require('express');
-const bcrypt = require('bcrypt');
-const Cliente = require('../models/Cliente');
+const express = require("express");
+const jwt = require("jsonwebtoken");
+const bcrypt = require("bcrypt");
+const Cliente = require("../models/Cliente");
 
 const router = express.Router();
 const SALT_ROUNDS = 10;
 const MIN_PASSWORD = 6;
+const JWT_SECRET = process.env.JWT_SECRET || "default-secret-key";
+const TOKEN_EXPIRY = "24h";
 
 const splitNombreCompleto = (full) => {
-  const t = String(full || '').trim();
-  if (!t) return { nombres: '', apellidos: '' };
+  const t = String(full || "").trim();
+  if (!t) return { nombres: "", apellidos: "" };
   const parts = t.split(/\s+/);
-  if (parts.length === 1) return { nombres: parts[0], apellidos: '' };
-  return { nombres: parts[0], apellidos: parts.slice(1).join(' ') };
+  if (parts.length === 1) return { nombres: parts[0], apellidos: "" };
+  return { nombres: parts[0], apellidos: parts.slice(1).join(" ") };
 };
 
 const toPublicCliente = (doc) => {
@@ -23,46 +26,62 @@ const toPublicCliente = (doc) => {
   return o;
 };
 
-router.post('/login', async (req, res) => {
+router.post("/login", async (req, res) => {
   try {
-    const correo = String((req.body || {}).correo || '')
+    const correo = String((req.body || {}).correo || "")
       .trim()
       .toLowerCase();
-    const password = String((req.body || {}).password || '');
+    const password = String((req.body || {}).password || "");
     if (!correo || !password) {
       return res
         .status(400)
-        .json({ message: 'Correo y contraseña son obligatorios.' });
+        .json({ message: "Correo y contraseña son obligatorios." });
     }
-    const cliente = await Cliente.findOne({ correo }).select('+passwordHash');
+    const cliente = await Cliente.findOne({ correo }).select("+passwordHash");
     if (!cliente || !cliente.passwordHash) {
       return res
         .status(401)
-        .json({ message: 'Correo o contraseña incorrectos.' });
+        .json({ message: "Correo o contraseña incorrectos." });
     }
-    if (String(cliente.estado || '').toUpperCase() !== 'ACTIVO') {
-      return res.status(403).json({ message: 'Tu cuenta no está activa.' });
+    if (String(cliente.estado || "").toUpperCase() !== "ACTIVO") {
+      return res.status(403).json({ message: "Tu cuenta no está activa." });
     }
     const ok = await bcrypt.compare(password, cliente.passwordHash);
     if (!ok) {
       return res
         .status(401)
-        .json({ message: 'Correo o contraseña incorrectos.' });
+        .json({ message: "Correo o contraseña incorrectos." });
     }
-    res.json({ cliente: toPublicCliente(cliente) });
+
+    // Parte del JWT
+    const token = jwt.sign(
+      {
+        id: cliente._id,
+        correo: cliente.correo,
+        nombres: cliente.nombres,
+        apellidos: cliente.apellidos,
+      },
+      JWT_SECRET,
+      { expiresIn: TOKEN_EXPIRY },
+    );
+
+    res.json({
+      cliente: toPublicCliente(cliente),
+      token: token,
+    });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: 'Error al iniciar sesión' });
+    res.status(500).json({ message: "Error al iniciar sesión" });
   }
 });
 
-router.get('/', async (req, res) => {
+router.get("/", async (req, res) => {
   try {
     const list = await Cliente.find().sort({ fechaRegistro: -1 }).lean();
     res.json(list);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: 'Error al listar clientes' });
+    res.status(500).json({ message: "Error al listar clientes" });
   }
 });
 
@@ -70,19 +89,21 @@ router.get('/', async (req, res) => {
  * Registro/actualización desde caja registradora tras una venta.
  * Actualiza si coincide correo o teléfono; si no, crea un cliente nuevo.
  */
-router.post('/registro-caja', async (req, res) => {
+router.post("/registro-caja", async (req, res) => {
   try {
     const { nombreCompleto, telefono, correo, documento } = req.body || {};
     const { nombres, apellidos } = splitNombreCompleto(nombreCompleto);
     if (!nombres) {
-      return res.status(400).json({ message: 'El nombre del cliente es obligatorio.' });
+      return res
+        .status(400)
+        .json({ message: "El nombre del cliente es obligatorio." });
     }
 
-    const correoNorm = String(correo || '')
+    const correoNorm = String(correo || "")
       .trim()
       .toLowerCase();
-    const telNorm = String(telefono || '').trim();
-    const docNorm = String(documento || '').trim();
+    const telNorm = String(telefono || "").trim();
+    const docNorm = String(documento || "").trim();
 
     let doc = null;
     if (correoNorm) {
@@ -109,14 +130,14 @@ router.post('/registro-caja', async (req, res) => {
       telefono: telNorm,
       correo: correoNorm,
       documento: docNorm,
-      tipoCliente: 'MINORISTA',
-      estado: 'ACTIVO',
-      ultimaCompra: new Date()
+      tipoCliente: "MINORISTA",
+      estado: "ACTIVO",
+      ultimaCompra: new Date(),
     });
     res.status(201).json(toPublicCliente(nuevo));
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: 'Error al registrar cliente' });
+    res.status(500).json({ message: "Error al registrar cliente" });
   }
 });
 
@@ -124,44 +145,46 @@ router.post('/registro-caja', async (req, res) => {
  * Alta de cliente. Si envía `password`, es registro web (contraseña obligatoria, correo único).
  * Sin contraseña: alta administrativa / legado (como antes).
  */
-router.post('/', async (req, res) => {
+router.post("/", async (req, res) => {
   try {
     const b = req.body || {};
-    const password = String(b.password || '');
-    const correo = String(b.correo || '')
+    const password = String(b.password || "");
+    const correo = String(b.correo || "")
       .trim()
       .toLowerCase();
 
     const base = {
-      nombres: String(b.nombres || '').trim(),
-      apellidos: String(b.apellidos || '').trim(),
-      tipoCliente: String(b.tipoCliente || 'MINORISTA').trim(),
-      telefono: String(b.telefono || '').trim(),
+      nombres: String(b.nombres || "").trim(),
+      apellidos: String(b.apellidos || "").trim(),
+      tipoCliente: String(b.tipoCliente || "MINORISTA").trim(),
+      telefono: String(b.telefono || "").trim(),
       correo,
-      direccion: String(b.direccion || '').trim(),
-      documento: String(b.documento || '').trim(),
-      estado: b.estado || 'ACTIVO'
+      direccion: String(b.direccion || "").trim(),
+      documento: String(b.documento || "").trim(),
+      estado: b.estado || "ACTIVO",
     };
 
     if (password) {
       if (password.length < MIN_PASSWORD) {
         return res.status(400).json({
-          message: `La contraseña debe tener al menos ${MIN_PASSWORD} caracteres.`
+          message: `La contraseña debe tener al menos ${MIN_PASSWORD} caracteres.`,
         });
       }
       if (!correo) {
-        return res.status(400).json({ message: 'El correo es obligatorio para registrarse.' });
+        return res
+          .status(400)
+          .json({ message: "El correo es obligatorio para registrarse." });
       }
       const existe = await Cliente.findOne({ correo });
       if (existe) {
         return res.status(409).json({
-          message: 'Ya existe un cliente con ese correo. Inicia sesión.'
+          message: "Ya existe un cliente con ese correo. Inicia sesión.",
         });
       }
       const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
       const nuevo = await Cliente.create({
         ...base,
-        passwordHash
+        passwordHash,
       });
       return res.status(201).json(toPublicCliente(nuevo));
     }
@@ -170,17 +193,17 @@ router.post('/', async (req, res) => {
     res.status(201).json(toPublicCliente(nuevo));
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: 'Error al crear cliente' });
+    res.status(500).json({ message: "Error al crear cliente" });
   }
 });
 
-router.put('/:id', async (req, res) => {
+router.put("/:id", async (req, res) => {
   try {
     const { id } = req.params;
     const b = req.body || {};
-    const cliente = await Cliente.findById(id).select('+passwordHash');
+    const cliente = await Cliente.findById(id).select("+passwordHash");
     if (!cliente) {
-      return res.status(404).json({ message: 'Cliente no encontrado.' });
+      return res.status(404).json({ message: "Cliente no encontrado." });
     }
 
     if (b.nombres != null) cliente.nombres = String(b.nombres).trim();
@@ -188,7 +211,8 @@ router.put('/:id', async (req, res) => {
     if (b.telefono != null) cliente.telefono = String(b.telefono).trim();
     if (b.documento != null) cliente.documento = String(b.documento).trim();
     if (b.direccion != null) cliente.direccion = String(b.direccion).trim();
-    if (b.tipoCliente != null) cliente.tipoCliente = String(b.tipoCliente).trim();
+    if (b.tipoCliente != null)
+      cliente.tipoCliente = String(b.tipoCliente).trim();
     if (b.estado != null) cliente.estado = b.estado;
 
     if (b.correo != null) {
@@ -196,29 +220,31 @@ router.put('/:id', async (req, res) => {
       if (nuevoCorreo !== cliente.correo) {
         const otro = await Cliente.findOne({
           correo: nuevoCorreo,
-          _id: { $ne: id }
+          _id: { $ne: id },
         });
         if (otro) {
-          return res.status(409).json({ message: 'Ese correo ya está en uso.' });
+          return res
+            .status(409)
+            .json({ message: "Ese correo ya está en uso." });
         }
         cliente.correo = nuevoCorreo;
       }
     }
 
-    const newPass = b.newPassword != null ? String(b.newPassword) : '';
+    const newPass = b.newPassword != null ? String(b.newPassword) : "";
     if (newPass.length > 0) {
       if (newPass.length < MIN_PASSWORD) {
         return res.status(400).json({
-          message: `La nueva contraseña debe tener al menos ${MIN_PASSWORD} caracteres.`
+          message: `La nueva contraseña debe tener al menos ${MIN_PASSWORD} caracteres.`,
         });
       }
-      const actual = String(b.currentPassword || '');
+      const actual = String(b.currentPassword || "");
       if (cliente.passwordHash) {
         const okActual = await bcrypt.compare(actual, cliente.passwordHash);
         if (!okActual) {
           return res
             .status(401)
-            .json({ message: 'La contraseña actual no es correcta.' });
+            .json({ message: "La contraseña actual no es correcta." });
         }
       }
       cliente.passwordHash = await bcrypt.hash(newPass, SALT_ROUNDS);
@@ -228,7 +254,7 @@ router.put('/:id', async (req, res) => {
     res.json(toPublicCliente(cliente));
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: 'Error al actualizar cliente' });
+    res.status(500).json({ message: "Error al actualizar cliente" });
   }
 });
 

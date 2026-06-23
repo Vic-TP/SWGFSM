@@ -21,12 +21,44 @@ const mapServerCliente = (doc) => {
     estado: doc.estado,
   };
 };
+//ESTO PODRÍA REDUCIRSE EN UN SOLO BLOQUE DE CODIGO COMPARTIDO, CORREGIR EN ULTIMA ITERACIÓN
+const getAuthToken = () => {
+  return sessionStorage.getItem("auth_token");
+};
+
+const fetchWithAuth = async (url, options = {}) => {
+  const token = getAuthToken();
+  const headers = {
+    "Content-Type": "application/json",
+    ...options.headers,
+  };
+
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  return fetch(url, {
+    ...options,
+    headers,
+  });
+};
 
 const formatDate = (isoString) => {
   try {
     return new Date(isoString).toLocaleString("es-PE", { dateStyle: "medium", timeStyle: "short" });
   } catch { return isoString; }
 };
+
+/** Más recientes primero (fecha desc, luego número de venta). */
+const sortPedidosRecientes = (list) =>
+  [...(Array.isArray(list) ? list : [])].sort((a, b) => {
+    const ta = new Date(a?.fecha || a?.date || a?.creadoEn || 0).getTime();
+    const tb = new Date(b?.fecha || b?.date || b?.creadoEn || 0).getTime();
+    if (tb !== ta) return tb - ta;
+    const na = String(a?.numeroVenta || "");
+    const nb = String(b?.numeroVenta || "");
+    return nb.localeCompare(na, undefined, { numeric: true });
+  });
 
 const Icon = ({ name }) => {
   const icons = {
@@ -136,24 +168,56 @@ const ClientProfilePage = () => {
     }
   };
 
+  const camposEntrega = (o) => ({
+    tipoEntrega: o?.tipoEntrega,
+    estacionMetropolitanoId: o?.estacionMetropolitanoId,
+    estacionMetropolitanoNombre: o?.estacionMetropolitanoNombre,
+    estacionMetropolitanoLinea: o?.estacionMetropolitanoLinea,
+    estacionReferencia: o?.estacionReferencia,
+    tiendaDireccion: o?.tiendaDireccion,
+  });
+
+  const fusionarEntregaDesdeLocal = (apiOrders, email) => {
+    try {
+      const raw = localStorage.getItem("cliente_pedidos");
+      if (!raw || !email) return apiOrders;
+      const localList = JSON.parse(raw)[email];
+      if (!Array.isArray(localList) || !localList.length) return apiOrders;
+      return apiOrders.map((v) => {
+        if (v?.tipoEntrega) return v;
+        const local = localList.find(
+          (l) =>
+            (l.numeroVenta && l.numeroVenta === v.numeroVenta) ||
+            (l.id && String(l.id) === String(v._id))
+        );
+        if (!local?.tipoEntrega) return v;
+        return { ...v, ...camposEntrega(local) };
+      });
+    } catch {
+      return apiOrders;
+    }
+  };
+
   const fetchClientOrders = async (email) => {
     try {
       // Obtener todas las ventas del cliente por email
-      const response = await fetch(`${API_URL_VENTAS}?clienteEmail=${email}`);
+      const response = await fetchWithAuth(`${API_URL_VENTAS}?clienteEmail=${email}`);
       if (response.ok) {
         const data = await response.json();
-        console.log("Pedidos del cliente desde MongoDB:", data);
-        setOrders(data);
-        
+        const merged = fusionarEntregaDesdeLocal(data, email);
+        const ordenados = sortPedidosRecientes(merged);
+        console.log("Pedidos del cliente desde MongoDB:", ordenados);
+        setOrders(ordenados);
+
         // También guardar en localStorage como respaldo
-        const byClient = { [email]: data };
+        const byClient = { [email]: ordenados };
         localStorage.setItem("cliente_pedidos", JSON.stringify(byClient));
       } else {
         // Fallback a localStorage si hay error
         const raw = localStorage.getItem("cliente_pedidos");
         if (raw) {
           const all = JSON.parse(raw);
-          if (email && all[email]) setOrders(all[email]);
+          if (email && all[email]) setOrders(sortPedidosRecientes(all[email]));
         }
       }
     } catch (error) {
@@ -162,7 +226,7 @@ const ClientProfilePage = () => {
       const raw = localStorage.getItem("cliente_pedidos");
       if (raw) {
         const all = JSON.parse(raw);
-        if (email && all[email]) setOrders(all[email]);
+        if (email && all[email]) setOrders(sortPedidosRecientes(all[email]));
       }
     }
   };
@@ -202,7 +266,7 @@ const ClientProfilePage = () => {
       return;
     }
     try {
-      const res = await fetch(`${API_URL_CLIENTES}/${client._id}`, {
+      const res = await fetchWithAuth(`${API_URL_CLIENTES}/${client._id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -314,11 +378,52 @@ const ClientProfilePage = () => {
     return map[String(m || "").toLowerCase()] || m || "—";
   };
 
+  const textoEntregaPedido = (order) => {
+    if (order?.tipoEntrega === "METROPOLITANO") {
+      const nom = order.estacionMetropolitanoNombre || "estación Metropolitano";
+      const lin = order.estacionMetropolitanoLinea ? ` (${order.estacionMetropolitanoLinea})` : "";
+      return {
+        titulo: "Entrega en estación Metropolitano",
+        detalle: `${nom}${lin}`,
+        referencia: order.estacionReferencia || null,
+      };
+    }
+    if (order?.tipoEntrega === "TIENDA") {
+      return {
+        titulo: "Recojo en tienda",
+        detalle: order.tiendaDireccion || "Av. Mercado Caqueta N° 800, RIMAC",
+        referencia: null,
+      };
+    }
+    return null;
+  };
+
   const lineaSubtotal = (item) => {
     if (item.subtotal != null && Number.isFinite(Number(item.subtotal))) return Number(item.subtotal);
     const pu = Number(item.precioUnitario ?? item.price ?? 0);
     const q = Number(item.cantidad ?? item.quantity ?? 0);
     return pu * q;
+  };
+
+  const descuentoPedido = (order) => {
+    const m = Number(order?.montoDescuento);
+    if (Number.isFinite(m) && m > 0) {
+      return {
+        monto: m,
+        codigo: order.codigoDescuento,
+        porcentaje: order.descuentoPorcentaje,
+      };
+    }
+    const sub = Number(order?.subtotal);
+    const tot = Number(order?.total);
+    if (Number.isFinite(sub) && Number.isFinite(tot) && sub > tot + 0.001) {
+      return {
+        monto: Math.round((sub - tot) * 100) / 100,
+        codigo: order?.codigoDescuento,
+        porcentaje: order?.descuentoPorcentaje,
+      };
+    }
+    return null;
   };
 
   const renderPerfil = () => (
@@ -408,7 +513,9 @@ const ClientProfilePage = () => {
         <h2 className="text-2xl font-bold text-emerald-900 mb-1">Mis pedidos</h2>
         <p className="text-sm text-gray-400 mb-5">{orders.length} pedido(s) realizados.</p>
         <div className="space-y-4">
-          {[...orders].reverse().map((order, index) => (
+          {orders.map((order, index) => {
+            const entrega = textoEntregaPedido(order);
+            return (
             <button
               key={order._id || index}
               type="button"
@@ -421,7 +528,7 @@ const ClientProfilePage = () => {
                     Pedido #{order.numeroVenta || orders.length - index}
                   </p>
                   <p className="text-xs text-gray-400 mt-0.5">{formatDate(order.fecha || order.date)}</p>
-                  <p className="text-xs mt-1">
+                  <p className="text-xs mt-1 flex flex-wrap gap-1.5">
                     <span
                       className={`font-semibold px-2 py-0.5 rounded-full ${
                         order.origen === "CAJA"
@@ -433,7 +540,22 @@ const ClientProfilePage = () => {
                     >
                       {etiquetaOrigenPedido(order)}
                     </span>
+                    {entrega?.titulo === "Entrega en estación Metropolitano" && (
+                      <span className="font-semibold px-2 py-0.5 rounded-full bg-[#006241]/10 text-[#006241]">
+                        Metropolitano
+                      </span>
+                    )}
+                    {entrega?.titulo === "Recojo en tienda" && (
+                      <span className="font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">
+                        Recojo tienda
+                      </span>
+                    )}
                   </p>
+                  {entrega && (
+                    <p className="text-xs text-[#006241] font-medium mt-1">
+                      {entrega.detalle}
+                    </p>
+                  )}
                 </div>
                 <div className="text-right">
                   <span className={`text-xs font-semibold px-3 py-1 rounded-full ${getEstadoColor(order.estado || "Pendiente")}`}>
@@ -454,7 +576,8 @@ const ClientProfilePage = () => {
               </div>
               <p className="text-xs text-emerald-600 font-semibold mt-3">Toca para ver el detalle completo →</p>
             </button>
-          ))}
+            );
+          })}
         </div>
       </div>
     );
@@ -626,6 +749,40 @@ const ClientProfilePage = () => {
                 </span>
               </div>
 
+              {(() => {
+                const entregaDet = textoEntregaPedido(detailOrder);
+                if (!entregaDet) {
+                  return detailOrder.origen === "ONLINE" ? (
+                    <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                      No consta el modo de entrega en este pedido (registro anterior). Los pedidos nuevos
+                      muestran tienda o estación Metropolitano.
+                    </div>
+                  ) : null;
+                }
+                return (
+                <div className="rounded-2xl border-2 border-[#006241]/25 bg-[#eef7f3] p-4">
+                  <p className="text-xs font-bold uppercase tracking-wide text-[#006241]">
+                    {entregaDet.titulo}
+                  </p>
+                  <p className="mt-2 text-base font-bold text-gray-900">
+                    {entregaDet.detalle}
+                  </p>
+                  {entregaDet.referencia && (
+                    <p className="mt-2 text-sm text-gray-700">
+                      <span className="font-semibold text-[#006241]">Punto de encuentro:</span>{" "}
+                      {entregaDet.referencia}
+                    </p>
+                  )}
+                  {detailOrder.tipoEntrega === "METROPOLITANO" && (
+                    <p className="mt-3 text-xs text-gray-600">
+                      Te entregaremos tu pedido en la estación indicada. Recibirás el pedido en el punto de
+                      encuentro acordado.
+                    </p>
+                  )}
+                </div>
+                );
+              })()}
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
                 <div className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2">
                   <p className="text-xs text-gray-500">Cliente</p>
@@ -685,6 +842,22 @@ const ClientProfilePage = () => {
                 <span className="text-gray-600">Subtotal</span>
                 <span className="font-semibold text-gray-900">S/ {Number(detailOrder.subtotal ?? detailOrder.total ?? 0).toFixed(2)}</span>
               </div>
+              {(() => {
+                const desc = descuentoPedido(detailOrder);
+                if (!desc) return null;
+                return (
+                  <div className="flex justify-between items-center text-sm text-emerald-700">
+                    <span>
+                      Descuento
+                      {desc.codigo ? ` · ${desc.codigo}` : ""}
+                      {desc.porcentaje != null && Number(desc.porcentaje) > 0
+                        ? ` · ${desc.porcentaje}%`
+                        : ""}
+                    </span>
+                    <span className="font-semibold">− S/ {desc.monto.toFixed(2)}</span>
+                  </div>
+                );
+              })()}
               <div className="flex justify-between items-center text-lg">
                 <span className="font-bold text-gray-900">Total</span>
                 <span className="font-extrabold text-emerald-800">S/ {Number(detailOrder.total || 0).toFixed(2)}</span>

@@ -53,6 +53,10 @@ const ventaSchema = new mongoose.Schema({
     required: true,
     min: 0
   },
+  /** Descuento por código (solo ventas ONLINE, palta madura) */
+  codigoDescuento: { type: String, required: false, trim: true },
+  montoDescuento: { type: Number, required: false, min: 0, default: 0 },
+  descuentoPorcentaje: { type: Number, required: false, min: 0, max: 100 },
   metodoPago: {
     type: String,
     enum: ['tarjeta', 'yape', 'plin', 'transferencia', 'efectivo'],
@@ -71,6 +75,37 @@ const ventaSchema = new mongoose.Schema({
     type: String,
     enum: ['CAJA', 'ONLINE'],
     required: false
+  },
+  /** TIENDA = recojo en local; METROPOLITANO = entrega en estación acordada */
+  tipoEntrega: {
+    type: String,
+    enum: ['TIENDA', 'METROPOLITANO'],
+    required: false
+  },
+  estacionMetropolitanoId: {
+    type: String,
+    required: false,
+    trim: true
+  },
+  estacionMetropolitanoNombre: {
+    type: String,
+    required: false,
+    trim: true
+  },
+  estacionMetropolitanoLinea: {
+    type: String,
+    required: false,
+    trim: true
+  },
+  estacionReferencia: {
+    type: String,
+    required: false,
+    trim: true
+  },
+  tiendaDireccion: {
+    type: String,
+    required: false,
+    trim: true
   },
   comprobante: {
     type: String,
