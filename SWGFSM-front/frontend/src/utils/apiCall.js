@@ -71,10 +71,13 @@
     return userProfile ? JSON.parse(userProfile) : null;
   };
 
-  /**
-   * Cerrar sesión
-   */
   export const logout = () => {
     sessionStorage.clear();
+    localStorage.removeItem("auth_token");
+    localStorage.removeItem("user_profile");
+    localStorage.removeItem("cliente_logueado");
+    localStorage.removeItem("cliente_actual");
+    localStorage.removeItem("trabajador_logueado");
+    localStorage.removeItem("trabajador_actual");
     window.location.href = "/login";
   };

@@ -253,6 +253,9 @@ const ClientProfilePage = () => {
   const confirmLogout = () => {
     localStorage.removeItem("cliente_logueado");
     localStorage.removeItem("cliente_actual");
+    localStorage.removeItem("auth_token");
+    localStorage.removeItem("user_profile");
+    sessionStorage.clear();
     window.location.href = "/";
   };
 
@@ -260,6 +263,8 @@ const ClientProfilePage = () => {
     if (!client?._id) {
       const updatedClient = { ...client, ...editForm };
       localStorage.setItem("cliente_actual", JSON.stringify(updatedClient));
+      localStorage.setItem("user_profile", JSON.stringify(updatedClient));
+      sessionStorage.setItem("user_profile", JSON.stringify(updatedClient));
       setClient(updatedClient);
       setEditing(false);
       alert("Perfil guardado solo en este navegador. Vuelve a iniciar sesión para sincronizar con el servidor.");
@@ -285,6 +290,8 @@ const ClientProfilePage = () => {
       setClient(updated);
       setEditForm(updated);
       localStorage.setItem("cliente_actual", JSON.stringify(updated));
+      localStorage.setItem("user_profile", JSON.stringify(updated));
+      sessionStorage.setItem("user_profile", JSON.stringify(updated));
       setEditing(false);
       alert("Perfil actualizado en el servidor.");
     } catch (e) {
@@ -319,6 +326,8 @@ const ClientProfilePage = () => {
       const updated = mapServerCliente(data);
       setClient(updated);
       localStorage.setItem("cliente_actual", JSON.stringify(updated));
+      localStorage.setItem("user_profile", JSON.stringify(updated));
+      sessionStorage.setItem("user_profile", JSON.stringify(updated));
       setShowChangePassword(false);
       setPasswordData({ current: "", new: "", confirm: "" });
       alert("Contraseña actualizada en el servidor.");
