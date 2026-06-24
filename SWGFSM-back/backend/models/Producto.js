@@ -34,7 +34,20 @@ const productoSchema = new mongoose.Schema(
     tamano: { type: String, required: false, trim: true, default: '' },
     descripcion: { type: String, required: false, trim: true, default: '' },
     estado: { type: String, default: 'ACTIVO' },
+    /** Descuento online (solo palta madura, hasta agotar stock maduro) */
+    codigoDescuento: { type: String, trim: true, default: '' },
+    descuentoEstado: { type: String, default: 'INACTIVO' },
+    descuentoPorcentaje: { type: Number, default: 15, min: 0, max: 100 },
     fechaCreacion: { type: Date, default: Date.now },
+
+    /** Pack / promoción (ej. Pack Familiar en landing) */
+    promocionActiva: { type: Boolean, default: false },
+    promocionVariedad: { type: String, trim: true, default: '' },
+    promocionNombre: { type: String, trim: true, default: 'Pack Familiar' },
+    promocionPrecio: { type: Number, default: 0, min: 0 },
+    promocionDescripcion: { type: String, trim: true, default: '' },
+    /** Kg de palta madura que descuenta cada pack vendido (inventario por kg) */
+    promocionKgMadura: { type: Number, default: 1, min: 0.01 },
 
     // --- Legacy (documentos antiguos en Atlas) ---
     categoriaId: { type: String, required: false },
