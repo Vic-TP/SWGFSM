@@ -5,7 +5,7 @@ const ESTACIONES_SEED = require('../data/estacionesMetropolitanoSeed');
 const router = express.Router();
 
 const DIRECCION_TIENDA_DEFAULT =
-  process.env.BUSINESS_ADDRESS || 'Av. Mercado Caqueta N° 800, RIMAC';
+  process.env.BUSINESS_ADDRESS || 'AV. CAQUETA 800 INT. 15 TREBOL DE CAQUETA';
 
 let seedPromise = null;
 
@@ -52,7 +52,7 @@ router.get('/config', async (_req, res) => {
       .lean();
     res.json({
       tienda: {
-        nombre: process.env.BUSINESS_NAME || 'Frutería Señor de Muruhuay',
+        nombre: process.env.BUSINESS_NAME || 'FRUTERIA SEÑOR DE MURUHUAY',
         direccion: DIRECCION_TIENDA_DEFAULT,
         horario: process.env.BUSINESS_HORARIO || 'Consultar horario en tienda',
       },

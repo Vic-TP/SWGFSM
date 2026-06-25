@@ -310,7 +310,7 @@ const textoOrigenVenta = (venta) => {
 };
 
 const DIRECCION_TIENDA_DEFAULT =
-  process.env.BUSINESS_ADDRESS || 'Av. Mercado Caqueta N° 800, RIMAC';
+  process.env.BUSINESS_ADDRESS || 'AV. CAQUETA 800 INT. 15 TREBOL DE CAQUETA';
 
 const normalizeTipoEntrega = (v) => {
   const t = String(v || '').trim().toUpperCase();
@@ -334,11 +334,11 @@ const textoEntregaVenta = (venta) => {
 
 const getBusinessConfig = () => ({
   logoUrl: process.env.BUSINESS_LOGO_URL || '',
-  nombre: process.env.BUSINESS_NAME || 'COMERCIALIZADORA DE FRUTAS SEÑOR DE MURUHUAY',
-  ruc: process.env.BUSINESS_RUC || '12345678901',
-  direccion: process.env.BUSINESS_ADDRESS || 'Av. Mercado Caqueta N° 800, RIMAC',
-  telefono: process.env.BUSINESS_PHONE || '966 142 980',
-  email: process.env.BUSINESS_EMAIL || 'comercializadoradepaltas@gmail.com',
+  nombre: process.env.BUSINESS_NAME || 'FRUTERIA SEÑOR DE MURUHUAY',
+  ruc: process.env.BUSINESS_RUC || '101215641',
+  direccion: process.env.BUSINESS_ADDRESS || 'AV. CAQUETA 800 INT. 15 TREBOL DE CAQUETA',
+  telefono: process.env.BUSINESS_PHONE || '966142980',
+  email: process.env.BUSINESS_EMAIL || 'paltasmuruhuay@gmail.com',
   web: process.env.BUSINESS_WEBSITE || '',
   taxRate: Math.max(0, numOr(process.env.TAX_RATE, 0.18))
 });

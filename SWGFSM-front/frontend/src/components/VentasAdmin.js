@@ -1,6 +1,7 @@
 // src/components/VentasAdmin.js - VERSIÓN CORREGIDA
 
 import React, { useState, useEffect, useMemo } from "react";
+import { toast } from "sonner";
 import { nombreLineaVenta, mergeTipoLineaDesdeCatalogo } from "../utils/tiendaProducto";
 import { descuentoVentaDetalle, etiquetaDescuentoVenta } from "../utils/ventaDescuento";
 
@@ -304,11 +305,42 @@ const VentasAdmin = () => {
   const abrirDetalle = (venta) => setVentaDetalle(venta || null);
   const cerrarDetalle = () => setVentaDetalle(null);
 
-  const imprimirBoleta = (venta) => {
+  const imprimirBoleta = async (venta) => {
     if (!venta?._id) return;
-    const url = `${API_URL_VENTAS}/${venta._id}/comprobante-pdf`;
-    const w = window.open(url, "_blank", "noopener,noreferrer");
-    if (w) w.focus();
+    try {
+      const res = await fetchWithAuth(
+        `${API_URL_VENTAS}/${venta._id}/comprobante-pdf`,
+      );
+      if (!res.ok) {
+        let msg = "No se pudo generar la boleta.";
+        try {
+          const err = await res.json();
+          if (err?.message) msg = err.message;
+        } catch {
+          /* respuesta no JSON */
+        }
+        toast.error(msg);
+        return;
+      }
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const w = window.open(blobUrl, "_blank", "noopener,noreferrer");
+      if (!w) {
+        toast.warning("Permite ventanas emergentes para ver la boleta.", {
+          duration: 5000,
+        });
+        URL.revokeObjectURL(blobUrl);
+        return;
+      }
+      w.focus();
+      toast.success("Boleta lista para imprimir.");
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 120_000);
+    } catch (err) {
+      console.error(err);
+      toast.error(
+        "Error al imprimir la boleta. Verifica que el backend esté en marcha.",
+      );
+    }
   };
 
   return (
