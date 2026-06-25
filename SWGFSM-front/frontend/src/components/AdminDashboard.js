@@ -1155,6 +1155,8 @@ const AdminDashboard = () => {
   const confirmLogout = () => {
     localStorage.removeItem("trabajador_logueado");
     localStorage.removeItem("trabajador_actual");
+    localStorage.removeItem("auth_token");
+    localStorage.removeItem("user_profile");
     sessionStorage.removeItem("user_profile");
     sessionStorage.removeItem("auth_token");
     window.location.href = "/";

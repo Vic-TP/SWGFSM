@@ -27,12 +27,14 @@ const WorkerLoginPage = () => {
         return;
       }
       if (data.empleado) {
-        // Guardar token JWT en sessionStorage
+        // Guardar token JWT en sessionStorage y localStorage
         if (data.token) {
           sessionStorage.setItem("auth_token", data.token);
+          localStorage.setItem("auth_token", data.token);
         }
-        // Guardar datos del empleado en sessionStorage (mismo lugar que en LoginPage)
+        // Guardar datos del empleado en sessionStorage y localStorage (mismo lugar que en LoginPage)
         sessionStorage.setItem("user_profile", JSON.stringify(data.empleado));
+        localStorage.setItem("user_profile", JSON.stringify(data.empleado));
       }
       window.location.href = "/admin-dashboard";
     } catch (err) {

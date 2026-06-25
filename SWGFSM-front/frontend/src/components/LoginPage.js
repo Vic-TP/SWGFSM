@@ -94,8 +94,10 @@ const LoginPage = () => {
         // Guardar token de forma segura
         if (data.token) {
           sessionStorage.setItem("auth_token", data.token);
+          localStorage.setItem("auth_token", data.token);
         }
         sessionStorage.setItem("user_profile", JSON.stringify(clienteFront));
+        localStorage.setItem("user_profile", JSON.stringify(clienteFront));
         localStorage.setItem("cliente_logueado", "true");
         localStorage.setItem("cliente_actual", JSON.stringify(clienteFront));
 
@@ -132,12 +134,14 @@ const LoginPage = () => {
         _id: "legacy-muruhuay",
       };
       sessionStorage.setItem("user_profile", JSON.stringify(adminData));
+      localStorage.setItem("user_profile", JSON.stringify(adminData));
 
       // Generar token JWT fake para el admin (válido por 24 horas)
       // Este es un token válido firmado con una clave conocida para desarrollo
       const fakeAdminToken =
         "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImxlZ2FjeS1tdXJ1aHVheSIsImNvcnJlbyI6Im1hcmlhQG11cnVodWF5LmNvbSIsInJvbCI6IkFkbWluaXN0cmFkb3IgZGUgYWxtYWNlbiIsIm5vbWJyZXMiOiJNYXLDrWEiLCJpYXQiOjE2MDAwMDAwMDAsImV4cCI6OTk5OTk5OTk5OX0.mock-signature";
       sessionStorage.setItem("auth_token", fakeAdminToken);
+      localStorage.setItem("auth_token", fakeAdminToken);
 
       toast.success(`Bienvenida ${admin.nombre}, acceso de administrador concedido.`); //DENUEVO, NECESARIO? PORQUE ESTE ADMINISTRADOR SE LOGEA EN OTRO APARTADO QUE NO ES ACCESO TRABAJADOR?
       setTimeout(() => {
@@ -166,8 +170,10 @@ const LoginPage = () => {
       // Guardar token JWT
       if (data.token) {
         sessionStorage.setItem("auth_token", data.token);
+        localStorage.setItem("auth_token", data.token);
       }
       sessionStorage.setItem("user_profile", JSON.stringify(clienteFront));
+      localStorage.setItem("user_profile", JSON.stringify(clienteFront));
       localStorage.setItem("cliente_logueado", "true");
       localStorage.setItem("cliente_actual", JSON.stringify(clienteFront));
 
