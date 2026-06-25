@@ -43,7 +43,9 @@ const SUB_LOTE_CONFIG = {
   maduro:      { label: "Maduro", bg: "bg-yellow-50",  text: "text-yellow-700",  icon: "🟠" },
   sin_definir: { label: "—",      bg: "bg-gray-50",    text: "text-gray-500",    icon: "⚪" },
 };
-const API = "http://localhost:5000/api/prediccion";
+import { API_URL_PREDICCION } from "../config/api";
+
+const API = API_URL_PREDICCION;
 
 const getAuthToken = () => {
   return sessionStorage.getItem("auth_token");
@@ -345,7 +347,9 @@ const Prediccion = () => {
           {/* ══ HEADER ══════════════════════════════════════════════════════════ */}
           <div className="px-6 pt-5 pb-4 border-b border-gray-100 flex flex-wrap items-start justify-between gap-3">
             <div>
-              <h2 className="text-xl font-bold text-gray-900">Predicción de madurez — Paltas</h2>
+              <p className="text-sm font-medium text-gray-700">
+                Madurez de paltas
+              </p>
               <p className="text-xs text-gray-500 mt-0.5">
                 Actualizado: {new Date().toLocaleDateString("es-PE")} · Lote actual: {totalKg} kg
               </p>

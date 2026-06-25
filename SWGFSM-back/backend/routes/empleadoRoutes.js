@@ -4,6 +4,7 @@ const express = require("express");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcrypt");
 const Empleado = require("../models/Empleado");
+const { normalizarModulosHabilitados } = require("../utils/panelModulos");
 
 const router = express.Router();
 const SALT_ROUNDS = 10;
@@ -109,6 +110,10 @@ router.post("/", async (req, res) => {
     }
 
     const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
+    const modulosHabilitados = normalizarModulosHabilitados(
+      b.modulosHabilitados,
+      rolRaw,
+    );
     const nuevo = await Empleado.create({
       nombres: String(b.nombres || "").trim(),
       apellidos: String(b.apellidos || "").trim(),
@@ -116,6 +121,7 @@ router.post("/", async (req, res) => {
       telefono: String(b.telefono || "").trim(),
       rol: rolRaw,
       estado: b.estado || "ACTIVO",
+      modulosHabilitados,
       passwordHash,
     });
     res.status(201).json(toPublicEmpleado(nuevo));
@@ -166,6 +172,12 @@ router.put("/:id", async (req, res) => {
     ).trim();
     empleado.rol = rolRaw;
     if (b.estado != null) empleado.estado = b.estado;
+    if (b.modulosHabilitados != null) {
+      empleado.modulosHabilitados = normalizarModulosHabilitados(
+        b.modulosHabilitados,
+        rolRaw,
+      );
+    }
 
     const password = b.password != null ? String(b.password) : "";
     if (password.length > 0) {

@@ -1,6 +1,8 @@
 import React, { useEffect, useState, useCallback } from "react";
 
-const API_TAREAS = "http://localhost:5000/api/tareas";
+import { API_URL_TAREAS } from "../config/api";
+
+const API_TAREAS = API_URL_TAREAS;
 
 const getAuthToken = () => {
   return sessionStorage.getItem("auth_token");
@@ -115,10 +117,7 @@ const TareasAsignadas = () => {
       <div className="rounded-3xl border border-lime-200 bg-white p-6 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 className="text-lg font-bold text-emerald-900">
-              Tareas asignadas
-            </h2>
-            <p className="mt-1 text-sm text-gray-600">
+            <p className="text-sm text-gray-600">
               Aquí aparecen las tareas que el administrador te ha asignado.
               Marca como completada cuando las termines.
             </p>

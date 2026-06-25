@@ -1,7 +1,7 @@
 // src/components/ProveedoresTable.js
 import React, { useEffect, useState, useCallback } from "react";
 
-const API_URL_PROVEEDORES = "http://localhost:5000/api/proveedores";
+import { API_URL_PROVEEDORES } from "../config/api";
 
 const getAuthToken = () => {
   return sessionStorage.getItem("auth_token");
@@ -158,8 +158,7 @@ const ProveedoresTable = () => {
 
   return (
     <section className="p-8">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-3xl font-bold text-emerald-900">Proveedores</h1>
+      <div className="flex items-center justify-end mb-6">
         <button
           type="button"
           className="bg-emerald-700 hover:bg-emerald-800 text-white font-semibold px-5 py-2 rounded-full shadow-md text-sm"

@@ -11,9 +11,24 @@ const Promocion = require('../models/Promocion');
 const EstacionMetropolitano = require('../models/EstacionMetropolitano');
 const { encontrarProductoCatalogoPorVariedad } = require('../utils/catalogoProducto');
 const { calcularDescuentoOnline, roundMoney } = require('../utils/descuentoOnline');
+const {
+  validarEntregaAgendada,
+  parseFechaEntrega,
+  etiquetaFechaHorarioEntrega,
+  agruparPedidosDespacho,
+  evaluarVentanaMarcarEntregado,
+  generarCodigoEntrega,
+  omitirCodigoEntrega,
+} = require('../utils/entregaHorario');
 const nodemailer = require('nodemailer');
 
+const {
+  authorizeRepartidorVentas,
+} = require('../middleware/authorizeRepartidor');
+
 const router = express.Router();
+
+router.use(authorizeRepartidorVentas);
 
 /** Stock vendible (kg): suma madura/verde/sazón; si todo es 0, legacy `stockSemanal` */
 const stockDisponibleProducto = (p) => {
@@ -310,7 +325,7 @@ const textoOrigenVenta = (venta) => {
 };
 
 const DIRECCION_TIENDA_DEFAULT =
-  process.env.BUSINESS_ADDRESS || 'Av. Mercado Caqueta N° 800, RIMAC';
+  process.env.BUSINESS_ADDRESS || 'AV. CAQUETA 800 INT. 15 TREBOL DE CAQUETA';
 
 const normalizeTipoEntrega = (v) => {
   const t = String(v || '').trim().toUpperCase();
@@ -319,26 +334,33 @@ const normalizeTipoEntrega = (v) => {
 
 const textoEntregaVenta = (venta) => {
   const tipo = normalizeTipoEntrega(venta?.tipoEntrega);
+  let base = '';
   if (tipo === 'METROPOLITANO') {
     const nom = venta?.estacionMetropolitanoNombre || 'Estación Metropolitano';
     const lin = venta?.estacionMetropolitanoLinea ? ` (${venta.estacionMetropolitanoLinea})` : '';
     const ref = venta?.estacionReferencia ? ` — ${venta.estacionReferencia}` : '';
-    return `Entrega en estación Metropolitano: ${nom}${lin}${ref}`;
-  }
-  if (tipo === 'TIENDA') {
+    base = `Entrega en estación Metropolitano: ${nom}${lin}${ref}`;
+  } else if (tipo === 'TIENDA') {
     const dir = venta?.tiendaDireccion || DIRECCION_TIENDA_DEFAULT;
-    return `Recojo en tienda: ${dir}`;
+    base = `Recojo en tienda: ${dir}`;
   }
-  return '';
+  const agenda = etiquetaFechaHorarioEntrega(
+    venta?.fechaEntrega,
+    venta?.horarioEntrega,
+  );
+  if (agenda) {
+    base = base ? `${base}. Programado: ${agenda}` : `Programado: ${agenda}`;
+  }
+  return base;
 };
 
 const getBusinessConfig = () => ({
   logoUrl: process.env.BUSINESS_LOGO_URL || '',
-  nombre: process.env.BUSINESS_NAME || 'COMERCIALIZADORA DE FRUTAS SEÑOR DE MURUHUAY',
-  ruc: process.env.BUSINESS_RUC || '12345678901',
-  direccion: process.env.BUSINESS_ADDRESS || 'Av. Mercado Caqueta N° 800, RIMAC',
-  telefono: process.env.BUSINESS_PHONE || '966 142 980',
-  email: process.env.BUSINESS_EMAIL || 'comercializadoradepaltas@gmail.com',
+  nombre: process.env.BUSINESS_NAME || 'FRUTERIA SEÑOR DE MURUHUAY',
+  ruc: process.env.BUSINESS_RUC || '101215641',
+  direccion: process.env.BUSINESS_ADDRESS || 'AV. CAQUETA 800 INT. 15 TREBOL DE CAQUETA',
+  telefono: process.env.BUSINESS_PHONE || '966142980',
+  email: process.env.BUSINESS_EMAIL || 'paltasmuruhuay@gmail.com',
   web: process.env.BUSINESS_WEBSITE || '',
   taxRate: Math.max(0, numOr(process.env.TAX_RATE, 0.18))
 });
@@ -702,6 +724,48 @@ router.get('/', async (req, res) => {
     res.status(500).json({ message: 'Error al obtener ventas' });
   }
 });
+
+/** GET pedidos online agrupados por fecha y horario de entrega (módulo Despacho) */
+router.get('/despacho', async (req, res) => {
+  try {
+    const { desde, hasta, estado } = req.query;
+    const filtro = {
+      origen: 'ONLINE',
+      fechaEntrega: { $exists: true, $ne: null },
+      horarioEntrega: { $exists: true, $nin: [null, ''] },
+      estado: { $ne: 'Cancelado' },
+    };
+
+    if (estado && estado !== 'todos') {
+      filtro.estado = String(estado);
+    }
+
+    if (desde || hasta) {
+      filtro.fechaEntrega = { $exists: true, $ne: null };
+      if (desde) filtro.fechaEntrega.$gte = parseFechaEntrega(desde);
+      if (hasta) {
+        const d = parseFechaEntrega(hasta);
+        d.setHours(23, 59, 59, 999);
+        filtro.fechaEntrega.$lte = d;
+      }
+    }
+
+    const ventas = await Venta.find(filtro).lean();
+    const resultado = agruparPedidosDespacho(ventas);
+    resultado.grupos = resultado.grupos.map((g) => ({
+      ...g,
+      pedidos: (g.pedidos || []).map((p) => ({
+        ...omitirCodigoEntrega(p),
+        requiereCodigoEntrega: Boolean(p.codigoEntrega),
+      })),
+    }));
+    res.json(resultado);
+  } catch (err) {
+    console.error('[despacho]', err);
+    res.status(500).json({ message: 'Error al cargar despacho' });
+  }
+});
+
 // POST nueva venta
 router.post('/', async (req, res) => {
   try {
@@ -912,6 +976,19 @@ router.post('/', async (req, res) => {
         ventaData.tiendaDireccion = String(req.body.tiendaDireccion || DIRECCION_TIENDA_DEFAULT).trim();
       }
     }
+
+    if (origenVenta === 'ONLINE') {
+      const valAgenda = validarEntregaAgendada(
+        req.body.fechaEntrega,
+        req.body.horarioEntrega,
+      );
+      if (!valAgenda.ok) {
+        return res.status(400).json({ message: valAgenda.message });
+      }
+      ventaData.fechaEntrega = parseFechaEntrega(valAgenda.fechaStr);
+      ventaData.horarioEntrega = valAgenda.horario;
+      ventaData.codigoEntrega = generarCodigoEntrega();
+    }
     
     console.log('📦 Venta a guardar:', JSON.stringify(ventaData, null, 2));
     
@@ -1020,6 +1097,25 @@ router.put('/:id/estado', async (req, res) => {
     const anterior = venta.estado;
     if (anterior === nuevo) {
       return res.json(venta);
+    }
+
+    if (nuevo === 'Entregado' && venta.fechaEntrega && venta.horarioEntrega) {
+      const ventana = evaluarVentanaMarcarEntregado(
+        venta.fechaEntrega,
+        venta.horarioEntrega,
+      );
+      if (!ventana.ok) {
+        return res.status(400).json({ message: ventana.message });
+      }
+    }
+
+    if (nuevo === 'Entregado' && venta.codigoEntrega) {
+      const codigoIngresado = String(req.body?.codigo || '').trim();
+      if (codigoIngresado !== String(venta.codigoEntrega)) {
+        return res.status(400).json({
+          message: 'Código de entrega incorrecto. Pide al cliente su código de 3 dígitos.',
+        });
+      }
     }
 
     const antesDescuenta = estadoDescuentaInventario(anterior);

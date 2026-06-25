@@ -1,11 +1,13 @@
 // src/components/VentasAdmin.js - VERSIÓN CORREGIDA
 
 import React, { useState, useEffect, useMemo } from "react";
+import { toast } from "sonner";
 import { nombreLineaVenta, mergeTipoLineaDesdeCatalogo } from "../utils/tiendaProducto";
 import { descuentoVentaDetalle, etiquetaDescuentoVenta } from "../utils/ventaDescuento";
 
-const API_URL_VENTAS = "http://localhost:5000/api/ventas";
-const API_URL_PRODUCTOS = "http://localhost:5000/api/producto";
+import { etiquetaFechaHorarioEntrega, evaluarVentanaMarcarEntregado } from "../utils/entregaHorario";
+
+import { API_URL_VENTAS, API_URL_PRODUCTOS } from "../config/api";
 
 const getAuthToken = () => {
   return sessionStorage.getItem("auth_token");
@@ -178,12 +180,47 @@ const VentasAdmin = () => {
   const cambiarEstado = async (id, nuevoEstado) => {
     try {
       const sid = String(id);
+      const ventaCtx =
+        ventas.find((v) => String(v._id) === sid) ||
+        (ventaDetalle && String(ventaDetalle._id) === sid ? ventaDetalle : null);
+
+      if (
+        nuevoEstado === "Entregado" &&
+        ventaCtx?.fechaEntrega &&
+        ventaCtx?.horarioEntrega
+      ) {
+        const ventana = evaluarVentanaMarcarEntregado(
+          ventaCtx.fechaEntrega,
+          ventaCtx.horarioEntrega,
+        );
+        if (!ventana.ok) {
+          alert(ventana.message);
+          await fetchVentas();
+          return;
+        }
+      }
+
+      let codigoEntrega = null;
+      if (nuevoEstado === "Entregado" && ventaCtx?.codigoEntrega) {
+        codigoEntrega = window.prompt(
+          "Ingresa el código de 3 dígitos que dictó el cliente:",
+        );
+        if (!codigoEntrega || !/^\d{3}$/.test(String(codigoEntrega).trim())) {
+          alert("Código inválido. Debe tener 3 dígitos.");
+          await fetchVentas();
+          return;
+        }
+      }
+
       const response = await fetchWithAuth(
         `${API_URL_VENTAS}/${encodeURIComponent(sid)}/estado`,
         {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ estado: nuevoEstado }),
+          body: JSON.stringify({
+            estado: nuevoEstado,
+            ...(codigoEntrega ? { codigo: String(codigoEntrega).trim() } : {}),
+          }),
         },
       );
       const data = await response.json().catch(() => ({}));
@@ -304,19 +341,46 @@ const VentasAdmin = () => {
   const abrirDetalle = (venta) => setVentaDetalle(venta || null);
   const cerrarDetalle = () => setVentaDetalle(null);
 
-  const imprimirBoleta = (venta) => {
+  const imprimirBoleta = async (venta) => {
     if (!venta?._id) return;
-    const url = `${API_URL_VENTAS}/${venta._id}/comprobante-pdf`;
-    const w = window.open(url, "_blank", "noopener,noreferrer");
-    if (w) w.focus();
+    try {
+      const res = await fetchWithAuth(
+        `${API_URL_VENTAS}/${venta._id}/comprobante-pdf`,
+      );
+      if (!res.ok) {
+        let msg = "No se pudo generar la boleta.";
+        try {
+          const err = await res.json();
+          if (err?.message) msg = err.message;
+        } catch {
+          /* respuesta no JSON */
+        }
+        toast.error(msg);
+        return;
+      }
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const w = window.open(blobUrl, "_blank", "noopener,noreferrer");
+      if (!w) {
+        toast.warning("Permite ventanas emergentes para ver la boleta.", {
+          duration: 5000,
+        });
+        URL.revokeObjectURL(blobUrl);
+        return;
+      }
+      w.focus();
+      toast.success("Boleta lista para imprimir.");
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 120_000);
+    } catch (err) {
+      console.error(err);
+      toast.error(
+        "Error al imprimir la boleta. Verifica que el backend esté en marcha.",
+      );
+    }
   };
 
   return (
     <div className="p-6 space-y-6">
-      <h1 className="text-2xl font-bold text-emerald-900">
-        Registro de Ventas
-      </h1>
-
       {/* Tarjetas de resumen */}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-4">
         <div className="bg-white rounded-2xl p-5 shadow-sm border-l-4 border-emerald-500">
@@ -698,6 +762,20 @@ const VentasAdmin = () => {
                   {ventaDetalle.tipoEntrega === "METROPOLITANO" && ventaDetalle.estacionReferencia && (
                     <p className="text-xs text-gray-500 mt-1">
                       Punto de encuentro: {ventaDetalle.estacionReferencia}
+                    </p>
+                  )}
+                  {etiquetaFechaHorarioEntrega(
+                    ventaDetalle.fechaEntrega,
+                    ventaDetalle.horarioEntrega,
+                  ) && (
+                    <p className="text-sm text-gray-700 mt-2">
+                      Fecha y horario:{" "}
+                      <span className="font-semibold">
+                        {etiquetaFechaHorarioEntrega(
+                          ventaDetalle.fechaEntrega,
+                          ventaDetalle.horarioEntrega,
+                        )}
+                      </span>
                     </p>
                   )}
                 </div>

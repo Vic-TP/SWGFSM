@@ -4,7 +4,9 @@ import React, { useState } from "react"; // ← Eliminado useEffect
 import PasswordInput from "./PasswordInput";
 import { Toaster, toast } from 'sonner'
 
-const API_URL_CLIENTES = "http://localhost:5000/api/clientes";
+import { migrarCarritoInvitadoTrasLogin } from "../utils/cartStorage";
+
+import { API_URL_CLIENTES } from "../config/api";
 
 const inputClass =
   "w-full rounded-xl border border-[#d4e9e2] bg-white px-4 py-2.5 text-[#1e3932] placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#006241]/35 focus:border-[#006241]/45";
@@ -94,14 +96,17 @@ const LoginPage = () => {
         // Guardar token de forma segura
         if (data.token) {
           sessionStorage.setItem("auth_token", data.token);
+          localStorage.setItem("auth_token", data.token);
         }
         sessionStorage.setItem("user_profile", JSON.stringify(clienteFront));
+        localStorage.setItem("user_profile", JSON.stringify(clienteFront));
         localStorage.setItem("cliente_logueado", "true");
         localStorage.setItem("cliente_actual", JSON.stringify(clienteFront));
+        migrarCarritoInvitadoTrasLogin(clienteFront);
 
         toast.success(`Cuenta creada para ${clienteFront.nombre}. Tus datos quedaron guardados en el servidor.`)
         setTimeout(() => {
-          window.location.href = "/cliente/perfil";
+          window.location.href = "/";
         }, 1000);
       } catch (err) {
         console.error(err);
@@ -132,12 +137,14 @@ const LoginPage = () => {
         _id: "legacy-muruhuay",
       };
       sessionStorage.setItem("user_profile", JSON.stringify(adminData));
+      localStorage.setItem("user_profile", JSON.stringify(adminData));
 
       // Generar token JWT fake para el admin (válido por 24 horas)
       // Este es un token válido firmado con una clave conocida para desarrollo
       const fakeAdminToken =
         "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImxlZ2FjeS1tdXJ1aHVheSIsImNvcnJlbyI6Im1hcmlhQG11cnVodWF5LmNvbSIsInJvbCI6IkFkbWluaXN0cmFkb3IgZGUgYWxtYWNlbiIsIm5vbWJyZXMiOiJNYXLDrWEiLCJpYXQiOjE2MDAwMDAwMDAsImV4cCI6OTk5OTk5OTk5OX0.mock-signature";
       sessionStorage.setItem("auth_token", fakeAdminToken);
+      localStorage.setItem("auth_token", fakeAdminToken);
 
       toast.success(`Bienvenida ${admin.nombre}, acceso de administrador concedido.`); //DENUEVO, NECESARIO? PORQUE ESTE ADMINISTRADOR SE LOGEA EN OTRO APARTADO QUE NO ES ACCESO TRABAJADOR?
       setTimeout(() => {
@@ -166,10 +173,13 @@ const LoginPage = () => {
       // Guardar token JWT
       if (data.token) {
         sessionStorage.setItem("auth_token", data.token);
+        localStorage.setItem("auth_token", data.token);
       }
       sessionStorage.setItem("user_profile", JSON.stringify(clienteFront));
+      localStorage.setItem("user_profile", JSON.stringify(clienteFront));
       localStorage.setItem("cliente_logueado", "true");
       localStorage.setItem("cliente_actual", JSON.stringify(clienteFront));
+      migrarCarritoInvitadoTrasLogin(clienteFront);
 
       toast.success(`Bienvenido/a ${clienteFront.nombre}`)
       setTimeout(() => {

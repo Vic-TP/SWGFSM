@@ -2,7 +2,9 @@ import React, { useState } from "react";
 import { Toaster, toast } from "sonner";
 import PasswordInput from "./PasswordInput";
 
-const API_LOGIN = "http://localhost:5000/api/empleados/login";
+import { API_URL_EMPLEADOS_LOGIN } from "../config/api";
+
+const API_LOGIN = API_URL_EMPLEADOS_LOGIN;
 
 const inputClass =
   "w-full rounded-xl border border-[#d4e9e2] bg-white px-4 py-2.5 text-[#1e3932] placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#006241]/35 focus:border-[#006241]/45";
@@ -27,12 +29,14 @@ const WorkerLoginPage = () => {
         return;
       }
       if (data.empleado) {
-        // Guardar token JWT en sessionStorage
+        // Guardar token JWT en sessionStorage y localStorage
         if (data.token) {
           sessionStorage.setItem("auth_token", data.token);
+          localStorage.setItem("auth_token", data.token);
         }
-        // Guardar datos del empleado en sessionStorage (mismo lugar que en LoginPage)
+        // Guardar datos del empleado en sessionStorage y localStorage (mismo lugar que en LoginPage)
         sessionStorage.setItem("user_profile", JSON.stringify(data.empleado));
+        localStorage.setItem("user_profile", JSON.stringify(data.empleado));
       }
       window.location.href = "/admin-dashboard";
     } catch (err) {
