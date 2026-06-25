@@ -9,9 +9,11 @@ import React, {
 } from "react";
 import { tipoProductoLabel } from "../utils/tiendaProducto";
 
-const API_URL_PRODUCTOS = "http://localhost:5000/api/producto";
-const API_URL_VENTAS = "http://localhost:5000/api/ventas";
-const API_URL_CLIENTES = "http://localhost:5000/api/clientes";
+import {
+  API_URL_PRODUCTOS,
+  API_URL_VENTAS,
+  API_URL_CLIENTES,
+} from "../config/api";
 const BUSQUEDA_DEBOUNCE_MS = 280;
 
 const getAuthToken = () => {

@@ -111,6 +111,7 @@ export const imagenPromoPorTipo = (p, imgs = {}) => {
   const cat = categoriaCatalogo(p);
   if (cat === "fuerte" && imgs.fuerte) return imgs.fuerte;
   if (cat === "hass" && imgs.hass) return imgs.hass;
+  if ((cat === "hall" || cat === "selva") && imgs.hall) return imgs.hall;
   return null;
 };
 

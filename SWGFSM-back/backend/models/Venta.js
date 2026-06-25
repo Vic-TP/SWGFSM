@@ -107,6 +107,23 @@ const ventaSchema = new mongoose.Schema({
     required: false,
     trim: true
   },
+  /** Fecha acordada de entrega/recojo (solo pedidos ONLINE) */
+  fechaEntrega: {
+    type: Date,
+    required: false
+  },
+  /** Horario acordado HH:mm (6:00–16:00, lun–sáb) */
+  horarioEntrega: {
+    type: String,
+    required: false,
+    trim: true
+  },
+  /** Código de 3 dígitos que el cliente dicta al repartidor para confirmar entrega */
+  codigoEntrega: {
+    type: String,
+    required: false,
+    trim: true
+  },
   comprobante: {
     type: String,
     enum: ['Boleta', 'Factura'],

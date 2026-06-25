@@ -4,7 +4,9 @@ import React, { useState } from "react"; // ← Eliminado useEffect
 import PasswordInput from "./PasswordInput";
 import { Toaster, toast } from 'sonner'
 
-const API_URL_CLIENTES = "http://localhost:5000/api/clientes";
+import { migrarCarritoInvitadoTrasLogin } from "../utils/cartStorage";
+
+import { API_URL_CLIENTES } from "../config/api";
 
 const inputClass =
   "w-full rounded-xl border border-[#d4e9e2] bg-white px-4 py-2.5 text-[#1e3932] placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#006241]/35 focus:border-[#006241]/45";
@@ -100,10 +102,11 @@ const LoginPage = () => {
         localStorage.setItem("user_profile", JSON.stringify(clienteFront));
         localStorage.setItem("cliente_logueado", "true");
         localStorage.setItem("cliente_actual", JSON.stringify(clienteFront));
+        migrarCarritoInvitadoTrasLogin(clienteFront);
 
         toast.success(`Cuenta creada para ${clienteFront.nombre}. Tus datos quedaron guardados en el servidor.`)
         setTimeout(() => {
-          window.location.href = "/cliente/perfil";
+          window.location.href = "/";
         }, 1000);
       } catch (err) {
         console.error(err);
@@ -176,6 +179,7 @@ const LoginPage = () => {
       localStorage.setItem("user_profile", JSON.stringify(clienteFront));
       localStorage.setItem("cliente_logueado", "true");
       localStorage.setItem("cliente_actual", JSON.stringify(clienteFront));
+      migrarCarritoInvitadoTrasLogin(clienteFront);
 
       toast.success(`Bienvenido/a ${clienteFront.nombre}`)
       setTimeout(() => {

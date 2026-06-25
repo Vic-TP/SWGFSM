@@ -13,7 +13,6 @@ const Footer = () => {
           </p>
           <p className="mt-4 text-xs font-medium tracking-wide text-[#d4e9e2]/80">Celular</p>
           <p className="mt-2 text-sm font-semibold text-white">966 142 980</p>
-          <p className="text-sm font-semibold text-white">988 133 254</p>
         </div>
 
         {/* Columna Dirección */}

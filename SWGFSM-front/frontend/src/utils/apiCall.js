@@ -1,83 +1,88 @@
-  // frontend/src/utils/apiCall.js
+// frontend/src/utils/apiCall.js
 
-  const API_BASE_URL = "http://localhost:5000/api";
+import { getAuthToken, syncAuthStorage } from "./authToken";
 
-  /**
-   * Hacer un request a la API incluyendo JWT automáticamente
-   *
-   * @param {string} endpoint - Ruta del endpoint (ej: '/empleados', '/clientes')
-   * @param {object} options - Opciones de fetch (method, body, headers, etc)
-   * @returns {Promise} Respuesta del servidor
-   *
-   * Ejemplo:
-   *   const data = await apiCall('/empleados', { method: 'GET' });
-   *   const result = await apiCall('/producto', {
-   *     method: 'POST',
-   *     body: JSON.stringify({ nombre: 'Palta' })
-   *   });
-   */
-  export const apiCall = async (endpoint, options = {}) => {
-    const token = sessionStorage.getItem("auth_token");
+import { API_BASE_URL } from "../config/api";
 
-    // Headers por defecto
-    const headers = {
-      "Content-Type": "application/json",
-      ...options.headers,
-    };
+/**
+ * Request a la API con JWT automático.
+ * @param {string} endpoint
+ * @param {object} options - fetch options + redirectOn401 (default true)
+ */
+export const apiCall = async (endpoint, options = {}) => {
+  syncAuthStorage();
+  const { redirectOn401 = true, ...fetchOptions } = options;
+  const token = getAuthToken();
 
-    // Agregar JWT si existe
-    if (token) {
-      headers["Authorization"] = `Bearer ${token}`;
-    }
+  const headers = {
+    "Content-Type": "application/json",
+    ...fetchOptions.headers,
+  };
 
-    try {
-      const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-        ...options,
-        headers,
-      });
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
 
-      // Si token expiró (401), limpiar y redirigir a login
-      if (response.status === 401) {
+  try {
+    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+      ...fetchOptions,
+      headers,
+    });
+
+    if (response.status === 401) {
+      if (redirectOn401) {
         console.warn("Token expirado, redirigiendo a login...");
         sessionStorage.clear();
         window.location.href = "/login";
-        return;
+        return null;
       }
-
-      // Si no autorizado (403), mostrar error
-      if (response.status === 403) {
-        throw new Error("No tienes permisos para esta acción");
-      }
-
-      return await response.json();
-    } catch (error) {
-      console.error("Error en request API:", error);
-      throw error;
+      const errBody = await response.json().catch(() => ({}));
+      throw new Error(errBody.message || "Sesión expirada. Vuelve a iniciar sesión.");
     }
-  };
 
-  /**
-   * Verificar si el usuario está autenticado
-   */
-  export const isAuthenticated = () => {
-    return sessionStorage.getItem("auth_token") !== null;
-  };
+    if (response.status === 403) {
+      throw new Error("No tienes permisos para esta acción");
+    }
 
-  /**
-   * Obtener datos del usuario actual
-   */
-  export const getCurrentUser = () => {
-    const userProfile = sessionStorage.getItem("user_profile");
-    return userProfile ? JSON.parse(userProfile) : null;
-  };
+    const contentType = response.headers.get("content-type") || "";
+    if (!contentType.includes("application/json")) {
+      if (!response.ok) {
+        throw new Error(`Error del servidor (${response.status})`);
+      }
+      return null;
+    }
 
-  export const logout = () => {
-    sessionStorage.clear();
-    localStorage.removeItem("auth_token");
-    localStorage.removeItem("user_profile");
-    localStorage.removeItem("cliente_logueado");
-    localStorage.removeItem("cliente_actual");
-    localStorage.removeItem("trabajador_logueado");
-    localStorage.removeItem("trabajador_actual");
-    window.location.href = "/login";
-  };
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(
+        data?.message || `Error del servidor (${response.status})`,
+      );
+    }
+
+    return data;
+  } catch (error) {
+    console.error("Error en request API:", error);
+    throw error;
+  }
+};
+
+export const isAuthenticated = () => Boolean(getAuthToken());
+
+export const getCurrentUser = () => {
+  syncAuthStorage();
+  const userProfile =
+    sessionStorage.getItem("user_profile") ||
+    localStorage.getItem("user_profile");
+  return userProfile ? JSON.parse(userProfile) : null;
+};
+
+export const logout = () => {
+  sessionStorage.clear();
+  localStorage.removeItem("auth_token");
+  localStorage.removeItem("user_profile");
+  localStorage.removeItem("cliente_logueado");
+  localStorage.removeItem("cliente_actual");
+  localStorage.removeItem("trabajador_logueado");
+  localStorage.removeItem("trabajador_actual");
+  window.location.href = "/login";
+};

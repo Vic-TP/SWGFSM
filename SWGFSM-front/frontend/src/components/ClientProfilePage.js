@@ -3,10 +3,13 @@
 import React, { useEffect, useState, useMemo } from "react";
 import PasswordInput from "./PasswordInput";
 import { nombreLineaVenta, mergeTipoLineaDesdeCatalogo } from "../utils/tiendaProducto";
+import { etiquetaFechaHorarioEntrega } from "../utils/entregaHorario";
 
-const API_URL_VENTAS = "http://localhost:5000/api/ventas";
-const API_URL_CLIENTES = "http://localhost:5000/api/clientes";
-const API_URL_PRODUCTOS = "http://localhost:5000/api/producto";
+import {
+  API_URL_VENTAS,
+  API_URL_CLIENTES,
+  API_URL_PRODUCTOS,
+} from "../config/api";
 
 const mapServerCliente = (doc) => {
   if (!doc) return null;
@@ -175,6 +178,9 @@ const ClientProfilePage = () => {
     estacionMetropolitanoLinea: o?.estacionMetropolitanoLinea,
     estacionReferencia: o?.estacionReferencia,
     tiendaDireccion: o?.tiendaDireccion,
+    fechaEntrega: o?.fechaEntrega,
+    horarioEntrega: o?.horarioEntrega,
+    codigoEntrega: o?.codigoEntrega,
   });
 
   const fusionarEntregaDesdeLocal = (apiOrders, email) => {
@@ -788,6 +794,33 @@ const ClientProfilePage = () => {
                       encuentro acordado.
                     </p>
                   )}
+                  {etiquetaFechaHorarioEntrega(
+                    detailOrder.fechaEntrega,
+                    detailOrder.horarioEntrega,
+                  ) && (
+                    <p className="mt-3 text-sm text-gray-800">
+                      <span className="font-semibold text-[#006241]">Fecha y horario:</span>{" "}
+                      {etiquetaFechaHorarioEntrega(
+                        detailOrder.fechaEntrega,
+                        detailOrder.horarioEntrega,
+                      )}
+                    </p>
+                  )}
+                  {detailOrder.codigoEntrega &&
+                    detailOrder.estado !== "Entregado" &&
+                    detailOrder.estado !== "Cancelado" && (
+                      <div className="mt-4 rounded-xl border-2 border-[#006241] bg-white px-4 py-3 text-center">
+                        <p className="text-xs font-bold uppercase tracking-wide text-[#006241]">
+                          Código de entrega
+                        </p>
+                        <p className="mt-1 text-3xl font-black tracking-[0.35em] text-[#1e3932]">
+                          {detailOrder.codigoEntrega}
+                        </p>
+                        <p className="mt-2 text-xs text-gray-600">
+                          Dicta este código al repartidor al recibir tu pedido.
+                        </p>
+                      </div>
+                    )}
                 </div>
                 );
               })()}

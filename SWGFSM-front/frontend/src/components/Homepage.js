@@ -26,7 +26,8 @@ import {
   roundKg,
 } from "../utils/tiendaProducto";
 import { calcularDescuentoOnlineCliente } from "../utils/descuentoOnline";
-import { cargarCarrito, guardarCarrito, vaciarCarritoStorage } from "../utils/cartStorage";
+import { cargarCarrito, guardarCarrito, vaciarCarritoStorage, migrarCarritoInvitadoTrasLogin } from "../utils/cartStorage";
+import { getAuthToken, syncAuthStorage } from "../utils/authToken";
 import PromocionDescuentoPopup from "./PromocionDescuentoPopup";
 
 import paltaHassVerde from "../assets/palta-hass-verde.png";
@@ -36,6 +37,7 @@ import paltaFuerte from "../assets/palta-fuerte.png";
 import paltaFuerteMostrador from "../assets/palta-fuerte-mostrador.png";
 import packPaltaFuerte from "../assets/pack-palta-fuerte.png";
 import packPaltaHass from "../assets/pack-palta-hass.png";
+import packPaltaHall from "../assets/pack-palta-hall.png";
 import paltaNaval from "../assets/palta-naval.png";
 import paltaSelva from "../assets/palta-selva.png";
 import paltasVariadas from "../assets/paltas.png";
@@ -53,9 +55,11 @@ import iconProductoFresco from "../assets/iconos/producto_fresco.png";
 import iconMejorPrecio from "../assets/iconos/mejor_precio.png";
 import iconCalidad from "../assets/iconos/calidad.png";
 
-const API_URL_PRODUCTOS = "http://localhost:5000/api/producto";
-const API_URL_PROMOCIONES = "http://localhost:5000/api/promociones";
-const API_URL_VENTAS = "http://localhost:5000/api/ventas";
+import {
+  API_URL_PRODUCTOS,
+  API_URL_PROMOCIONES,
+  API_URL_VENTAS,
+} from "../config/api";
 
 /** Carrusel hero: rutas empaquetadas por Webpack (siempre visibles en dev y build). Para tus fotos, sustituye los PNG en src/assets (o public/hero-carousel vía código). */
 const HERO_CAROUSEL_SLIDES = [
@@ -75,10 +79,6 @@ const IMG_DEFAULTS = {
   naval: paltaNaval,
   selva: paltaSelva,
   variadas: paltasVariadas,
-};
-
-const getAuthToken = () => {
-  return sessionStorage.getItem("auth_token");
 };
 
 const fetchWithAuth = async (url, options = {}) => {
@@ -307,11 +307,18 @@ const HomePage = () => {
   }, [nutriLightbox]);
 
   useEffect(() => {
+    syncAuthStorage();
     try {
       const logged = localStorage.getItem("cliente_logueado") === "true";
       if (logged) {
         const stored = localStorage.getItem("cliente_actual");
-        if (stored) setClient(JSON.parse(stored));
+        if (stored) {
+          const cliente = JSON.parse(stored);
+          setClient(cliente);
+          if (migrarCarritoInvitadoTrasLogin(cliente)) {
+            setCartItems(cargarCarrito());
+          }
+        }
       }
     } catch (err) {
       console.error(err);
@@ -692,11 +699,13 @@ const HomePage = () => {
       ...(descuentoAplicado?.ok
         ? { codigoDescuento: descuentoAplicado.codigo }
         : {}),
-      metodoPago: selectedPaymentMethod,
+      metodoPago: deliveryInfo.metodoPago || selectedPaymentMethod,
       comprobante: "Boleta",
       estado: "Pendiente",
       origen: "ONLINE",
       tipoEntrega: deliveryInfo.tipoEntrega || "TIENDA",
+      fechaEntrega: deliveryInfo.fechaEntrega,
+      horarioEntrega: deliveryInfo.horarioEntrega,
       ...(deliveryInfo.tipoEntrega === "METROPOLITANO"
         ? {
             estacionMetropolitanoId: deliveryInfo.estacionMetropolitanoId,
@@ -738,6 +747,9 @@ const HomePage = () => {
           estacionMetropolitanoLinea: ventaGuardada.estacionMetropolitanoLinea,
           estacionReferencia: ventaGuardada.estacionReferencia,
           tiendaDireccion: ventaGuardada.tiendaDireccion,
+          fechaEntrega: ventaGuardada.fechaEntrega,
+          horarioEntrega: ventaGuardada.horarioEntrega,
+          codigoEntrega: ventaGuardada.codigoEntrega,
         };
 
         let byClient = {};
@@ -758,7 +770,12 @@ const HomePage = () => {
         setIsCartOpen(false);
         setDescuentoAplicado(null);
         setCodigoDescuentoInput("");
-       toast.success("¡Pedido realizado con éxito! Se ha guardado en el sistema.");
+       toast.success(
+          ventaGuardada.codigoEntrega
+            ? `¡Pedido realizado! Tu código de entrega es: ${ventaGuardada.codigoEntrega} (dicta este código al repartidor).`
+            : "¡Pedido realizado con éxito! Se ha guardado en el sistema.",
+          { duration: 12000 },
+        );
         try {
           window.dispatchEvent(new Event("swgfsm-stock-actualizado"));
           const resProd = await fetchWithAuth(API_URL_PRODUCTOS);
@@ -839,11 +856,15 @@ const HomePage = () => {
             .toLowerCase() === variedad.toLowerCase(),
       ) || null;
 
-    const imgsPromo = { fuerte: packPaltaFuerte, hass: packPaltaHass };
+    const imgsPromo = {
+      fuerte: packPaltaFuerte,
+      hass: packPaltaHass,
+      hall: packPaltaHall,
+    };
     const slots = [
       { slot: 0, img: paltaFuerte, imagenPromo: packPaltaFuerte, variedad: "Fuerte", slug: "fuerte" },
       { slot: 1, img: paltaHassVerde, imagenPromo: packPaltaHass, variedad: "Hass", slug: "hass" },
-      { slot: 2, img: paltaHall, variedad: "Hall", slug: "hall" },
+      { slot: 2, img: paltaHall, imagenPromo: packPaltaHall, variedad: "Hall", slug: "hall" },
     ];
     return slots.map(({ slot, img, imagenPromo, variedad, slug }) => {
       const promocion = findPromo(variedad);

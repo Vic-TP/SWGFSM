@@ -3,6 +3,7 @@ import PropTypes from "prop-types";
 import * as XLSX from "xlsx";
 import ProveedoresTable from "./ProveedoresTable";
 import VentasAdmin from "./VentasAdmin";
+import DespachoAdmin from "./DespachoAdmin";
 import GestionTareas from "./GestionTareas";
 import TareasAsignadas from "./TareasAsignadas";
 import CajaRegistradora from "./CajaRegistradora";
@@ -17,14 +18,24 @@ import {
 } from "../utils/tiendaProducto";
 import { descuentoVentaDetalle } from "../utils/ventaDescuento";
 import { Toaster, toast } from "sonner";
+import {
+  seccionInicialPanel,
+  menuSeccionesPanel,
+  etiquetaRolSidebar,
+  modulosPorDefectoRol,
+  PANEL_MENU_ORDER,
+  PANEL_SECTION_LABELS,
+} from "../utils/empleadoRoles";
 
-const API_URL_PRODUCTOS = "http://localhost:5000/api/producto";
-const API_URL_PROMOCIONES = "http://localhost:5000/api/promociones";
-const API_URL_INVENTARIO = "http://localhost:5000/api/inventario";
-const API_URL_CLIENTES = "http://localhost:5000/api/clientes";
-const API_URL_EMPLEADOS = "http://localhost:5000/api/empleados";
-const API_URL_VENTAS = "http://localhost:5000/api/ventas";
-const API_URL_PREDICCION = "http://localhost:5000/api/prediccion";
+import {
+  API_URL_PRODUCTOS,
+  API_URL_PROMOCIONES,
+  API_URL_INVENTARIO,
+  API_URL_CLIENTES,
+  API_URL_EMPLEADOS,
+  API_URL_VENTAS,
+  API_URL_PREDICCION,
+} from "../config/api";
 
 const VARIEDADES_PALTA = ["Fuerte", "Hass", "Hall", "Naval"];
 
@@ -58,19 +69,6 @@ const readTrabajador = () => {
   }
 };
 
-const isPanelVendedor = (trabajador) => {
-  if (!trabajador) return false;
-  const rolesVendedor = ["Vendedor", "Personal de despacho"];
-  return rolesVendedor.includes(trabajador.rol);
-};
-
-const etiquetaRolSidebar = (t) => {
-  if (!t?.rol) return "—";
-  if (t.rol === "Vendedor") return "VENDEDOR";
-  if (t.rol === "Administrador de sistemas") return "ADMINISTRADOR DEL SISTEMA";
-  return String(t.rol).toUpperCase();
-};
-
 const nombreCompletoSidebar = (t) => {
   const partes = [t?.nombres, t?.apellidos]
     .filter(Boolean)
@@ -82,9 +80,9 @@ const sameLocalDay = (a, b) => {
   const d1 = new Date(a);
   const d2 = new Date(b);
   return (
-    a.getFullYear() === b.getFullYear() &&
-    a.getMonth() === b.getMonth() &&
-    a.getDate() === b.getDate()
+    d1.getFullYear() === d2.getFullYear() &&
+    d1.getMonth() === d2.getMonth() &&
+    d1.getDate() === d2.getDate()
   );
 };
 
@@ -271,7 +269,7 @@ const LogoutModal = ({ onConfirm, onCancel }) => {
 
 const AdminDashboard = () => {
   const [selectedSection, setSelectedSection] = useState(() =>
-    isPanelVendedor(readTrabajador()) ? "caja" : "dashboard",
+    seccionInicialPanel(readTrabajador()),
   );
   const [showLogoutModal, setShowLogoutModal] = useState(false);
 
@@ -366,6 +364,7 @@ const AdminDashboard = () => {
     telefono: "",
     rol: "Vendedor",
     password: "",
+    modulosHabilitados: modulosPorDefectoRol("Vendedor"),
   });
   const [empleadoForm, setEmpleadoForm] = useState(emptyEmpleadoForm);
   const [editingEmpleadoId, setEditingEmpleadoId] = useState(null);
@@ -383,9 +382,9 @@ const AdminDashboard = () => {
 
   useEffect(() => {
     const t = readTrabajador();
-    if (!isPanelVendedor(t)) return;
-    if (!["caja", "ventas", "tareasAsignadas"].includes(selectedSection)) {
-      setSelectedSection("caja");
+    const allowed = menuSeccionesPanel(t, PANEL_MENU_ORDER, PANEL_SECTION_LABELS);
+    if (!allowed.includes(selectedSection)) {
+      setSelectedSection(allowed[0] || "dashboard");
     }
   }, [selectedSection]);
 
@@ -566,15 +565,42 @@ const AdminDashboard = () => {
       (a, b) => fechaVenta(b) - fechaVenta(a),
     );
     if (!rows.length) {
-      alert("No hay ventas en el rango seleccionado para exportar.");
+      toast.warning("No hay ventas en el rango seleccionado para exportar.");
       return;
     }
     const fname = `ventas_${slug}_${localDateKey(new Date())}.xlsx`;
     downloadVentasXlsx(rows, fname);
   };
 
-  const handleChangeEmpleadoForm = (e) =>
-    setEmpleadoForm((p) => ({ ...p, [e.target.name]: e.target.value }));
+  const handleChangeEmpleadoForm = (e) => {
+    const { name, value } = e.target;
+    if (name === "rol") {
+      setEmpleadoForm((p) => ({
+        ...p,
+        rol: value,
+        modulosHabilitados: modulosPorDefectoRol(value),
+      }));
+      return;
+    }
+    setEmpleadoForm((p) => ({ ...p, [name]: value }));
+  };
+
+  const toggleModuloEmpleado = (moduloKey) => {
+    setEmpleadoForm((p) => {
+      const cur = Array.isArray(p.modulosHabilitados) ? p.modulosHabilitados : [];
+      const next = cur.includes(moduloKey)
+        ? cur.filter((k) => k !== moduloKey)
+        : [...cur, moduloKey];
+      return { ...p, modulosHabilitados: next };
+    });
+  };
+
+  const restaurarModulosPorRol = () => {
+    setEmpleadoForm((p) => ({
+      ...p,
+      modulosHabilitados: modulosPorDefectoRol(p.rol),
+    }));
+  };
 
   const abrirModalNuevoEmpleado = () => {
     setEditingEmpleadoId(null);
@@ -591,6 +617,10 @@ const AdminDashboard = () => {
       telefono: emp.telefono || "",
       rol: emp.rol || "Vendedor",
       password: "",
+      modulosHabilitados:
+        Array.isArray(emp.modulosHabilitados) && emp.modulosHabilitados.length
+          ? emp.modulosHabilitados
+          : modulosPorDefectoRol(emp.rol || "Vendedor"),
     });
     setShowEmpleadoModal(true);
   };
@@ -604,18 +634,27 @@ const AdminDashboard = () => {
   const handleSubmitEmpleado = async (e) => {
     e.preventDefault();
     if (!empleadoForm.correo?.trim()) {
-      alert("El correo del empleado es obligatorio.");
+      toast.warning("El correo del empleado es obligatorio.");
       return;
     }
     const pwd = empleadoForm.password?.trim() || "";
     if (!editingEmpleadoId && pwd.length < 6) {
-      alert(
+      toast.warning(
         "La contraseña es obligatoria al crear un empleado (mínimo 6 caracteres).",
       );
       return;
     }
     if (editingEmpleadoId && pwd.length > 0 && pwd.length < 6) {
-      alert("Si cambias la contraseña, debe tener al menos 6 caracteres.");
+      toast.warning("Si cambias la contraseña, debe tener al menos 6 caracteres.");
+      return;
+    }
+    const modulos = Array.isArray(empleadoForm.modulosHabilitados)
+      ? empleadoForm.modulosHabilitados.filter((m) =>
+          PANEL_MENU_ORDER.includes(m),
+        )
+      : [];
+    if (!modulos.length) {
+      toast.warning("Selecciona al menos un módulo habilitado para el empleado.");
       return;
     }
     try {
@@ -625,6 +664,7 @@ const AdminDashboard = () => {
         correo: empleadoForm.correo,
         telefono: empleadoForm.telefono,
         rol: empleadoForm.rol,
+        modulosHabilitados: modulos,
       };
       let res;
       if (editingEmpleadoId) {
@@ -644,16 +684,18 @@ const AdminDashboard = () => {
       }
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        alert(data.message || "No se pudo guardar el empleado.");
+        toast.error(data.message || "No se pudo guardar el empleado.");
         return;
       }
       const fueEdicion = !!editingEmpleadoId;
       cerrarModalEmpleado();
       fetchEmpleados();
-      alert(fueEdicion ? "Empleado actualizado." : "Empleado registrado.");
+      toast.success(
+        fueEdicion ? "Empleado actualizado." : "Empleado registrado.",
+      );
     } catch (err) {
       console.error(err);
-      alert("Error de conexión al guardar empleado.");
+      toast.error("Error de conexión al guardar empleado.");
     }
   };
 
@@ -681,7 +723,7 @@ const AdminDashboard = () => {
       setProductos(data);
     } catch (e) {
       console.error("Error al cargar productos:", e);
-      alert("No se pudieron cargar los productos. Verifica el backend.");
+      toast.error("No se pudieron cargar los productos. Verifica el backend.");
     }
   };
 
@@ -789,7 +831,7 @@ const AdminDashboard = () => {
 
   const abrirModalNuevaPromocion = () => {
     if (variedadesPromoPermitidas.length === 0) {
-      alert(
+      toast.warning(
         "No hay variedades disponibles en el Listado de productos. Registra primero al menos un producto activo (Fuerte, Hass, Hall o Naval).",
       );
       return;
@@ -843,7 +885,7 @@ const AdminDashboard = () => {
       promocionKgMadura: 1,
     };
     if (!payload.nombre) {
-      alert("El nombre del producto es obligatorio.");
+      toast.warning("El nombre del producto es obligatorio.");
       return;
     }
     try {
@@ -859,10 +901,11 @@ const AdminDashboard = () => {
       if (res.ok) {
         fetchProductos();
         setShowProductoModal(false);
-        alert("Producto guardado.");
-      } else alert("Error al guardar producto.");
+        toast.success("Producto guardado.");
+      } else toast.error("Error al guardar producto.");
     } catch (err) {
       console.error(err);
+      toast.error("Error de conexión al guardar el producto.");
     }
   };
 
@@ -884,16 +927,16 @@ const AdminDashboard = () => {
           : "ACTIVO",
     };
     if (!payload.variedad) {
-      alert("Selecciona la variedad de palta.");
+      toast.warning("Selecciona la variedad de palta.");
       return;
     }
     if (payload.precio <= 0) {
-      alert("Indica un precio de pack mayor a 0.");
+      toast.warning("Indica un precio de pack mayor a 0.");
       return;
     }
     const prodCatalogo = productoCatalogoPorVariedad(productos, payload.variedad);
     if (!prodCatalogo) {
-      alert(
+      toast.warning(
         `No puedes registrar el pack: la variedad "${payload.variedad}" no está en el Listado de productos (activo). Añádela primero en la tabla de arriba.`,
       );
       return;
@@ -911,13 +954,14 @@ const AdminDashboard = () => {
       if (res.ok) {
         fetchPromociones();
         setShowPromocionModal(false);
-        alert("Promoción guardada.");
+        toast.success("Promoción guardada.");
       } else {
         const err = await res.json().catch(() => ({}));
-        alert(err.message || "Error al guardar la promoción.");
+        toast.error(err.message || "Error al guardar la promoción.");
       }
     } catch (err) {
       console.error(err);
+      toast.error("Error de conexión al guardar la promoción.");
     }
   };
 
@@ -938,16 +982,17 @@ const AdminDashboard = () => {
           setShowPromocionModal(false);
         }
         fetchPromociones();
-        alert("Promoción eliminada.");
-      } else alert("No se pudo eliminar la promoción.");
+        toast.success("Promoción eliminada.");
+      } else toast.error("No se pudo eliminar la promoción.");
     } catch (err) {
       console.error(err);
+      toast.error("Error de conexión al eliminar la promoción.");
     }
   };
 
   const cambiarEstadoDescuento = async (p) => {
     if (!String(p.codigoDescuento || "").trim()) {
-      alert("Asigna un código de descuento al editar el producto primero.");
+      toast.warning("Asigna un código de descuento al editar el producto primero.");
       return;
     }
     const nuevo =
@@ -986,7 +1031,7 @@ const AdminDashboard = () => {
         }),
       });
       if (res.ok) fetchProductos();
-      else alert("No se pudo cambiar el estado del descuento.");
+      else toast.error("No se pudo cambiar el estado del descuento.");
     } catch (err) {
       console.error(err);
     }
@@ -1012,7 +1057,7 @@ const AdminDashboard = () => {
           setShowPromocionModal(false);
         }
         fetchProductos();
-        alert("Producto eliminado.");
+        toast.success("Producto eliminado.");
       } else {
         let msg = "No se pudo eliminar el producto.";
         try {
@@ -1021,11 +1066,11 @@ const AdminDashboard = () => {
         } catch {
           /* ignore */
         }
-        alert(msg);
+        toast.error(msg);
       }
     } catch (e) {
       console.error(e);
-      alert("Error de conexión al eliminar.");
+      toast.error("Error de conexión al eliminar.");
     }
   };
 
@@ -1039,7 +1084,7 @@ const AdminDashboard = () => {
         (n) => Number.isNaN(n) || n < 0,
       )
     ) {
-      alert(
+      toast.warning(
         "Cantidad, precio de compra y total invertido deben ser números válidos.",
       );
       return;
@@ -1081,18 +1126,17 @@ const AdminDashboard = () => {
         });
         setModoEditarInventario(false);
         setInventarioEditId(null);
-        toast.success("Registro guardado")
-        //alert("Registro guardado")
+        toast.success("Registro guardado");
       } else {
-        let msg = "Error al guardar inventario.";
+        let msg = "Error al guardar el registro.";
         try {
           const b = await res.json();
           if (b?.message) msg = b.message;
         } catch {}
-        alert(msg);
+        toast.error(msg);
       }
     } catch {
-      alert("No se pudo conectar con el servidor.");
+      toast.error("No se pudo conectar con el servidor.");
     }
   };
 
@@ -1116,6 +1160,42 @@ const AdminDashboard = () => {
       totalInvertido: inv.totalInvertido ?? inv.pago ?? "",
     });
     setShowRegistroInventarioModal(true);
+  };
+
+  const descargarNotaIngresoPdf = async (inv) => {
+    if (!inv?._id) return;
+    try {
+      const res = await fetchWithAuth(
+        `${API_URL_INVENTARIO}/${inv._id}/nota-ingreso-pdf`,
+      );
+      if (!res.ok) {
+        let msg = "No se pudo generar la Nota de ingreso.";
+        try {
+          const err = await res.json();
+          if (err?.message) msg = err.message;
+        } catch {
+          /* no JSON */
+        }
+        toast.error(msg);
+        return;
+      }
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const w = window.open(blobUrl, "_blank", "noopener,noreferrer");
+      if (!w) {
+        toast.warning("Permite ventanas emergentes para ver el PDF.", {
+          duration: 5000,
+        });
+        URL.revokeObjectURL(blobUrl);
+        return;
+      }
+      w.focus();
+      toast.success("Nota de ingreso lista para imprimir o guardar.");
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 120_000);
+    } catch (err) {
+      console.error(err);
+      toast.error("Error al descargar la Nota de ingreso.");
+    }
   };
 
   const eliminarInventario = async (inv) => { //FLUJO PARA ELIMINAR USANDO TOAST, IMPLEMENTAR EN OTROS MÓDULOS
@@ -1169,36 +1249,16 @@ const AdminDashboard = () => {
         : "text-emerald-100 hover:bg-emerald-800/60"
     }`;
 
-  const sectionLabels = {
-    dashboard: "Dashboard",
-    caja: "Caja Registradora",
-    usuarios: "Usuarios",
-    productos: "Productos",
-    inventario: "Inventario",
-    proveedores: "Proveedores",
-    ventas: "Ventas",
-    tareasGestion: "Gestión de Tareas",
-    tareasAsignadas: "Tareas asignadas",
-    prediction: "Predicción",
-  };
+  const sectionLabels = PANEL_SECTION_LABELS;
 
-  const adminMenuOrder = [
-    "dashboard",
-    "caja",
-    "usuarios",
-    "productos",
-    "inventario",
-    "proveedores",
-    "ventas",
-    "tareasGestion",
-    "tareasAsignadas",
-    "prediction",
-  ];
+  const adminMenuOrder = PANEL_MENU_ORDER;
 
   const trabajadorSesion = readTrabajador();
-  const menuSectionKeys = isPanelVendedor(trabajadorSesion)
-    ? ["caja", "ventas", "tareasAsignadas"]
-    : adminMenuOrder.filter((k) => Object.hasOwn(sectionLabels, k));
+  const menuSectionKeys = menuSeccionesPanel(
+    trabajadorSesion,
+    adminMenuOrder,
+    sectionLabels,
+  );
 
   const inp =
     "w-full border border-gray-200 p-2.5 rounded-xl text-sm outline-none focus:ring-2 focus:ring-emerald-400";
@@ -1611,7 +1671,6 @@ const AdminDashboard = () => {
     if (selectedSection === "usuarios")
       return (
         <section className="flex-1 p-8 space-y-8">
-          <h1 className="text-2xl font-bold text-emerald-900">Usuarios</h1>
           <div className="bg-white border border-lime-200 rounded-3xl overflow-hidden">
             <div className="px-8 py-4 border-b border-lime-100 flex justify-between items-center">
               <h2 className="text-sm font-bold text-emerald-900">Clientes</h2>
@@ -1706,6 +1765,7 @@ const AdminDashboard = () => {
                       "Correo",
                       "Teléfono",
                       "Rol",
+                      "Módulos",
                       "Estado",
                       "Acciones",
                     ].map((h) => (
@@ -1719,7 +1779,7 @@ const AdminDashboard = () => {
                   {cargandoUsuarios ? (
                     <tr>
                       <td
-                        colSpan="7"
+                        colSpan="8"
                         className="px-4 py-8 text-center text-gray-400"
                       >
                         Cargando empleados…
@@ -1728,7 +1788,7 @@ const AdminDashboard = () => {
                   ) : empleados.length === 0 ? (
                     <tr>
                       <td
-                        colSpan="7"
+                        colSpan="8"
                         className="px-4 py-8 text-center text-gray-400"
                       >
                         No hay empleados. Usa &quot;+ Añadir&quot; para
@@ -1743,6 +1803,15 @@ const AdminDashboard = () => {
                         <td className="px-4 py-2">{e.correo}</td>
                         <td className="px-4 py-2">{e.telefono || "—"}</td>
                         <td className="px-4 py-2">{e.rol}</td>
+                        <td className="px-4 py-2 text-xs text-gray-600 max-w-[180px]">
+                          {(Array.isArray(e.modulosHabilitados) &&
+                          e.modulosHabilitados.length
+                            ? e.modulosHabilitados
+                            : modulosPorDefectoRol(e.rol)
+                          )
+                            .map((k) => PANEL_SECTION_LABELS[k] || k)
+                            .join(", ")}
+                        </td>
                         <td className="px-4 py-2">
                           <span className="bg-emerald-100 text-emerald-800 text-xs font-semibold px-2 py-0.5 rounded-full">
                             {e.estado}
@@ -1767,7 +1836,7 @@ const AdminDashboard = () => {
 
           {showEmpleadoModal && (
             <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40">
-              <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+              <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
                 <form onSubmit={handleSubmitEmpleado}>
                   <div className="flex items-center justify-between px-6 py-4 border-b">
                     <h2 className="text-base font-bold text-gray-900">
@@ -1877,8 +1946,9 @@ const AdminDashboard = () => {
                         className={inp}
                       >
                         <option value="Vendedor">Vendedor</option>
+                        <option value="Repartidor">Repartidor</option>
                         <option value="Personal de despacho">
-                          Personal de despacho
+                          Personal de despacho (repartidor)
                         </option>
                         <option value="Administrador de almacén">
                           Administrador de almacén
@@ -1890,6 +1960,49 @@ const AdminDashboard = () => {
                           Administrador de sistemas
                         </option>
                       </select>
+                    </div>
+                    <div>
+                      <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                        <span className="block font-medium text-gray-700">
+                          Módulos habilitados
+                        </span>
+                        <button
+                          type="button"
+                          onClick={restaurarModulosPorRol}
+                          className="text-xs font-semibold text-emerald-700 hover:underline"
+                        >
+                          Usar sugeridos del rol
+                        </button>
+                      </div>
+                      <p className="text-xs text-gray-500 mb-3">
+                        Elige qué secciones del panel podrá ver este empleado al
+                        iniciar sesión.
+                      </p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 rounded-2xl border border-lime-200 bg-lime-50/60 p-3">
+                        {PANEL_MENU_ORDER.map((modKey) => {
+                          const checked = (
+                            empleadoForm.modulosHabilitados || []
+                          ).includes(modKey);
+                          return (
+                            <label
+                              key={modKey}
+                              className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-sm cursor-pointer transition ${
+                                checked
+                                  ? "border-emerald-400 bg-white text-emerald-900"
+                                  : "border-transparent bg-white/70 text-gray-600"
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() => toggleModuloEmpleado(modKey)}
+                                className="rounded border-gray-300 text-emerald-700 focus:ring-emerald-500"
+                              />
+                              <span>{PANEL_SECTION_LABELS[modKey]}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
                     </div>
                   </div>
                   <div className="flex justify-end gap-3 px-6 py-4 border-t">
@@ -2542,15 +2655,12 @@ const AdminDashboard = () => {
         </section>
       );
 
-    /* INVENTARIO */
+    /* GESTIÓN DE INVENTARIO */
     if (selectedSection === "inventario")
       return (
         <section className="flex-1 p-8">
           <div className="bg-white border border-lime-200 rounded-3xl overflow-hidden">
-            <div className="px-8 py-4 border-b border-lime-100 flex justify-between items-center">
-              <h2 className="font-bold text-emerald-900">
-                Inventario de paltas
-              </h2>
+            <div className="px-8 py-4 border-b border-lime-100 flex flex-wrap justify-end items-center gap-3">
               <button
                 onClick={() => {
                   setModoEditarInventario(false);
@@ -2631,7 +2741,14 @@ const AdminDashboard = () => {
                           S/ {inv.totalInvertido ?? inv.pago}
                         </td>
                         <td className="px-4 py-2">
-                          <div className="flex items-center gap-2">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => descargarNotaIngresoPdf(inv)}
+                              className="border border-emerald-700 text-emerald-800 hover:bg-emerald-50 text-xs font-semibold px-3 py-1.5 rounded-full shadow-sm"
+                            >
+                              Nota de ingreso
+                            </button>
                             <button
                               type="button"
                               onClick={() => abrirEditarInventario(inv)}
@@ -2837,6 +2954,10 @@ const AdminDashboard = () => {
       return <VentasAdmin />;
     }
 
+    if (selectedSection === "despacho") {
+      return <DespachoAdmin />;
+    }
+
     if (selectedSection === "tareasGestion") {
       return <GestionTareas />;
     }
@@ -2891,8 +3012,8 @@ const AdminDashboard = () => {
       </aside>
 
       <main className="flex-1 flex flex-col h-screen overflow-y-auto bg-lime-50">
-        <header className="flex justify-between p-5 bg-white border-b sticky top-0 z-10 shadow-sm items-center">
-          <h1 className="text-xl font-bold text-emerald-900">
+        <header className="flex justify-between px-6 py-4 bg-white border-b border-lime-100 sticky top-0 z-10 shadow-sm items-center">
+          <h1 className="text-lg font-semibold tracking-tight text-emerald-900 border-l-[3px] border-emerald-500 pl-3">
             {sectionLabels[selectedSection]}
           </h1>
           <div className="flex items-center gap-3">

@@ -1,7 +1,9 @@
 import React, { useEffect, useState, useCallback } from "react";
 
-const API_TAREAS = "http://localhost:5000/api/tareas";
-const API_EMPLEADOS = "http://localhost:5000/api/empleados";
+import { API_URL_TAREAS, API_URL_EMPLEADOS } from "../config/api";
+
+const API_TAREAS = API_URL_TAREAS;
+const API_EMPLEADOS = API_URL_EMPLEADOS;
 
 const getAuthToken = () => {
   return sessionStorage.getItem("auth_token");

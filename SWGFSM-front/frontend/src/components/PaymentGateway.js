@@ -9,9 +9,16 @@
 //
 // El ACCESS_TOKEN de MP va SOLO en el backend (.env del servidor).
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useMemo } from "react";
 import { loadMercadoPago } from "@mercadopago/sdk-js";
 import { apiCall, getCurrentUser } from "../utils/apiCall";
+import {
+  horariosEntregaDisponibles,
+  validarEntregaAgendada,
+  primeraFechaEntregaDisponible,
+  formatFechaLarga,
+} from "../utils/entregaHorario";
+import CalendarioEntrega from "./CalendarioEntrega";
 
 // ---------------------------------------------------------------------------
 // Helper: pago simulado (efectivo, Plin, transferencia)
@@ -21,6 +28,7 @@ async function runSimulatedPayment({ method, total, deliveryPayload }) {
   try {
     const data = await apiCall("/pagos/pago-simulado", {
       method: "POST",
+      redirectOn401: false,
       body: JSON.stringify({
         method,
         total: Number(total),
@@ -38,6 +46,7 @@ async function runSimulatedPayment({ method, total, deliveryPayload }) {
 
     return {
       ok: true,
+      simulated: true,
       operationId: data.operationId,
       message:
         data.message ||
@@ -63,6 +72,12 @@ const PaymentGateway = ({ total, onSuccess, onCancel, onMethodSelect }) => {
   const [estacionId, setEstacionId] = useState("");
   const [entregaConfig, setEntregaConfig] = useState(null);
   const [entregaLoading, setEntregaLoading] = useState(true);
+  const [fechaEntrega, setFechaEntrega] = useState(primeraFechaEntregaDisponible);
+  const horariosDisponibles = useMemo(
+    () => horariosEntregaDisponibles(fechaEntrega),
+    [fechaEntrega],
+  );
+  const [horarioEntrega, setHorarioEntrega] = useState("");
 
   // ── Método de pago ───────────────────────────────────────────────────────
   const [paymentMethod, setPaymentMethod] = useState("efectivo");
@@ -91,6 +106,9 @@ const PaymentGateway = ({ total, onSuccess, onCancel, onMethodSelect }) => {
   const [yapePhone, setYapePhone] = useState("");
   const [yapeOtp, setYapeOtp] = useState("");
 
+  const mpPublicKey = process.env.REACT_APP_MP_PUBLIC_KEY;
+  const mpEnabled = Boolean(mpPublicKey && sdkReady);
+
   const busy = phase === "processing";
   const totalNum = Number(total) || 0;
   const brandGreen = "#006241";
@@ -102,7 +120,10 @@ const PaymentGateway = ({ total, onSuccess, onCancel, onMethodSelect }) => {
     (async () => {
       setEntregaLoading(true);
       try {
-        const data = await apiCall("/entrega/config", { method: "GET" });
+        const data = await apiCall("/entrega/config", {
+          method: "GET",
+          redirectOn401: false,
+        });
         if (!data) throw new Error("config");
         if (!cancelled) {
           setEntregaConfig(data);
@@ -112,7 +133,9 @@ const PaymentGateway = ({ total, onSuccess, onCancel, onMethodSelect }) => {
       } catch {
         if (!cancelled)
           setEntregaConfig({
-            tienda: { direccion: "Av. Mercado Caqueta N° 800, RIMAC" },
+            tienda: {
+              direccion: "AV. CAQUETA 800 INT. 15 TREBOL DE CAQUETA",
+            },
             estacionesMetropolitano: [],
           });
       } finally {
@@ -124,14 +147,33 @@ const PaymentGateway = ({ total, onSuccess, onCancel, onMethodSelect }) => {
     };
   }, []);
 
+  useEffect(() => {
+    if (!horariosDisponibles.length) {
+      setHorarioEntrega("");
+      return;
+    }
+    if (!horariosDisponibles.some((h) => h.value === horarioEntrega)) {
+      setHorarioEntrega(horariosDisponibles[0].value);
+    }
+  }, [horariosDisponibles, horarioEntrega]);
+
   // ── Inicializa Mercado Pago (UNA VEZ) ───────────────────────────────────
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      const publicKey = process.env.REACT_APP_MP_PUBLIC_KEY;
+      if (!publicKey) {
+        if (!cancelled) {
+          setFieldError(
+            "Mercado Pago no está configurado (falta REACT_APP_MP_PUBLIC_KEY en frontend/.env). Efectivo sigue disponible.",
+          );
+        }
+        return;
+      }
       try {
         await loadMercadoPago();
         if (cancelled) return;
-        mpRef.current = new window.MercadoPago(process.env.REACT_APP_MP_PUBLIC_KEY, {
+        mpRef.current = new window.MercadoPago(publicKey, {
           locale: "es-PE",
         });
         if (!cancelled) setSdkReady(true);
@@ -142,7 +184,9 @@ const PaymentGateway = ({ total, onSuccess, onCancel, onMethodSelect }) => {
         }
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // ── Helpers de entrega ───────────────────────────────────────────────────
@@ -151,25 +195,61 @@ const PaymentGateway = ({ total, onSuccess, onCancel, onMethodSelect }) => {
     (e) => String(e._id) === String(estacionId),
   );
 
-  const buildDeliveryPayload = () => {
-    if (tipoEntrega === "metropolitano") {
+  const buildDeliveryPayload = () => ({
+    ...(() => {
+      if (tipoEntrega === "metropolitano") {
+        return {
+          tipoEntrega: "METROPOLITANO",
+          estacionMetropolitanoId: estacionId,
+          estacionMetropolitanoNombre: estacionSel?.nombre,
+          estacionMetropolitanoLinea: estacionSel?.linea,
+          estacionReferencia: estacionSel?.referencia,
+        };
+      }
       return {
-        tipoEntrega: "METROPOLITANO",
-        estacionMetropolitanoId: estacionId,
-        estacionMetropolitanoNombre: estacionSel?.nombre,
-        estacionMetropolitanoLinea: estacionSel?.linea,
-        estacionReferencia: estacionSel?.referencia,
+        tipoEntrega: "TIENDA",
+        tiendaDireccion:
+          entregaConfig?.tienda?.direccion ||
+          "AV. CAQUETA 800 INT. 15 TREBOL DE CAQUETA",
       };
+    })(),
+    fechaEntrega,
+    horarioEntrega,
+  });
+
+  const validarFormularioEntrega = () => {
+    if (tipoEntrega === "metropolitano") {
+      if (!estaciones.length) {
+        setFieldError("No hay estaciones Metropolitano disponibles. Elige recojo en tienda.");
+        return false;
+      }
+      if (!estacionId) {
+        setFieldError("Selecciona la estación del Metropolitano.");
+        return false;
+      }
     }
-    return {
-      tipoEntrega: "TIENDA",
-      tiendaDireccion:
-        entregaConfig?.tienda?.direccion || "Av. Mercado Caqueta N° 800, RIMAC",
-    };
+    const valAgenda = validarEntregaAgendada(fechaEntrega, horarioEntrega);
+    if (!valAgenda.ok) {
+      setFieldError(valAgenda.message);
+      return false;
+    }
+    if (!horariosDisponibles.length) {
+      setFieldError(
+        "No hay horarios disponibles hoy. Elige otra fecha (lun–sáb, 6:00 a.m.–4:00 p.m.).",
+      );
+      return false;
+    }
+    return true;
   };
 
   // ── Handlers ─────────────────────────────────────────────────────────────
   const handleMethodChange = (method) => {
+    if ((method === "tarjeta" || method === "yape") && !mpEnabled) {
+      setFieldError(
+        "Tarjeta y Yape requieren Mercado Pago configurado. Usa efectivo o contacta al administrador.",
+      );
+      return;
+    }
     setPaymentMethod(method);
     setFieldError("");
     if (onMethodSelect) onMethodSelect(method);
@@ -184,7 +264,10 @@ const PaymentGateway = ({ total, onSuccess, onCancel, onMethodSelect }) => {
     let cancelled = false;
     (async () => {
       try {
-        const data = await apiCall(`/pagos/issuers?payment_method_id=${pm}&bin=${bin}`, { method: "GET" });
+        const data = await apiCall(
+          `/pagos/issuers?payment_method_id=${pm}&bin=${bin}`,
+          { method: "GET", redirectOn401: false },
+        );
         if (cancelled || !Array.isArray(data)) return;
         setCardIssuers(data);
         if (data.length === 1) setIssuerId(String(data[0].id));
@@ -236,6 +319,7 @@ const PaymentGateway = ({ total, onSuccess, onCancel, onMethodSelect }) => {
 
       const data = await apiCall("/pagos/create_preference", {
         method: "POST",
+        redirectOn401: false,
         body: JSON.stringify({
           token: cardToken.id,
           issuer_id: issuerId || undefined,
@@ -276,7 +360,10 @@ const PaymentGateway = ({ total, onSuccess, onCancel, onMethodSelect }) => {
       }
     } catch (err) {
       console.error("Error al procesar tarjeta:", err);
-      setResult({ ok: false, message: "Error al procesar el pago con tarjeta." });
+      setResult({
+        ok: false,
+        message: err.message || "Error al procesar el pago con tarjeta.",
+      });
     } finally {
       setPhase("result");
     }
@@ -331,6 +418,7 @@ const PaymentGateway = ({ total, onSuccess, onCancel, onMethodSelect }) => {
 
       const data = await apiCall("/pagos/create_yape", {
         method: "POST",
+        redirectOn401: false,
         body: JSON.stringify({
           token: tokenResponse.id,
           transaction_amount: totalNum,
@@ -359,7 +447,10 @@ const PaymentGateway = ({ total, onSuccess, onCancel, onMethodSelect }) => {
         });
       }
     } catch (err) {
-      setResult({ ok: false, message: "Error al procesar el pago Yape." });
+      setResult({
+        ok: false,
+        message: err.message || "Error al procesar el pago Yape.",
+      });
     } finally {
       setPhase("result");
     }
@@ -369,6 +460,8 @@ const PaymentGateway = ({ total, onSuccess, onCancel, onMethodSelect }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setFieldError("");
+
+    if (!validarFormularioEntrega()) return;
 
     if (tipoEntrega === "metropolitano") {
       if (!estaciones.length) {
@@ -382,8 +475,16 @@ const PaymentGateway = ({ total, onSuccess, onCancel, onMethodSelect }) => {
     }
 
     if (paymentMethod === "yape") {
+      if (!mpEnabled) {
+        setFieldError("Yape no está disponible. Configura Mercado Pago o usa efectivo.");
+        return;
+      }
       await handleYapePayment();
     } else if (paymentMethod === "tarjeta") {
+      if (!mpEnabled) {
+        setFieldError("Tarjeta no está disponible. Configura Mercado Pago o usa efectivo.");
+        return;
+      }
       await handleCardPayment();
     } else {
       setPhase("processing");
@@ -400,7 +501,12 @@ const PaymentGateway = ({ total, onSuccess, onCancel, onMethodSelect }) => {
   const finishSuccessAndClose = async () => {
     try {
       if (typeof onSuccess === "function")
-        await Promise.resolve(onSuccess(buildDeliveryPayload()));
+        await Promise.resolve(
+          onSuccess({
+            ...buildDeliveryPayload(),
+            metodoPago: paymentMethod,
+          }),
+        );
     } finally {
       onCancel();
     }
@@ -464,7 +570,7 @@ const PaymentGateway = ({ total, onSuccess, onCancel, onMethodSelect }) => {
               <h2 id="mp-result-title" className="text-lg font-bold">
                 {result.ok ? "✓ Pago aprobado" : "Pago no completado"}
               </h2>
-              {result.ok && (
+              {result.ok && !result.simulated && (
                 <p className="mt-1 text-sm text-white/90">Procesado con Mercado Pago</p>
               )}
             </div>
@@ -536,7 +642,7 @@ const PaymentGateway = ({ total, onSuccess, onCancel, onMethodSelect }) => {
                     <button type="button" disabled={busy} onClick={() => setTipoEntrega("tienda")}
                       className={`flex-1 rounded-2xl border-2 px-4 py-3 text-left text-sm transition ${tipoEntrega === "tienda" ? "border-[#006241] bg-white shadow-sm" : "border-gray-200 bg-white/80 hover:border-[#006241]/40"}`}>
                       <span className="block font-bold text-[#1e3932]">Recojo en tienda</span>
-                      <span className="mt-1 block text-xs text-gray-600 leading-snug">{entregaConfig?.tienda?.direccion || "Av. Mercado Caqueta N° 800, RIMAC"}</span>
+                      <span className="mt-1 block text-xs text-gray-600 leading-snug">{entregaConfig?.tienda?.direccion || "AV. CAQUETA 800 INT. 15 TREBOL DE CAQUETA"}</span>
                     </button>
                     <button type="button" disabled={busy || estaciones.length === 0} onClick={() => setTipoEntrega("metropolitano")}
                       className={`flex-1 rounded-2xl border-2 px-4 py-3 text-left text-sm transition disabled:opacity-50 ${tipoEntrega === "metropolitano" ? "border-[#006241] bg-white shadow-sm" : "border-gray-200 bg-white/80 hover:border-[#006241]/40"}`}>
@@ -565,6 +671,57 @@ const PaymentGateway = ({ total, onSuccess, onCancel, onMethodSelect }) => {
                       Por ahora no hay estaciones Metropolitano activas. Elige recojo en tienda.
                     </p>
                   )}
+
+                  <div className="mt-4 rounded-xl border border-[#d4e9e2] bg-white/90 p-3">
+                    <p className="mb-2 text-xs font-semibold text-[#1e3932]">
+                      Fecha y horario de entrega
+                    </p>
+                    <p className="mb-3 text-[11px] text-gray-600 leading-snug">
+                      De lunes a sábado, de 6:00 a.m. a 4:00 p.m. (domingos no disponibles)
+                    </p>
+                    <div className="grid gap-4 lg:grid-cols-2">
+                      <div>
+                        <p className="mb-2 text-xs font-medium text-gray-600">Fecha</p>
+                        <CalendarioEntrega
+                          value={fechaEntrega}
+                          onChange={setFechaEntrega}
+                          disabled={busy}
+                        />
+                      </div>
+                      <div>
+                        <p className="mb-2 text-xs font-medium text-gray-600">Horario</p>
+                        {horariosDisponibles.length === 0 ? (
+                          <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-4 text-sm text-amber-800">
+                            No hay horarios para esta fecha. Elige otro día en el calendario.
+                          </p>
+                        ) : (
+                          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                            {horariosDisponibles.map((h) => (
+                              <button
+                                key={h.value}
+                                type="button"
+                                disabled={busy}
+                                onClick={() => setHorarioEntrega(h.value)}
+                                className={`rounded-xl border-2 px-2 py-2.5 text-xs font-semibold transition ${
+                                  horarioEntrega === h.value
+                                    ? "border-[#006241] bg-[#006241] text-white shadow-sm"
+                                    : "border-gray-200 bg-white text-gray-700 hover:border-[#006241]/40"
+                                }`}
+                              >
+                                {h.label}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                        {fechaEntrega && horarioEntrega && (
+                          <p className="mt-3 rounded-lg bg-[#eef7f3] px-3 py-2 text-xs text-[#1e3932]">
+                            <span className="font-semibold">Programado:</span>{" "}
+                            {formatFechaLarga(fechaEntrega)}, {horariosDisponibles.find((x) => x.value === horarioEntrega)?.label || horarioEntrega}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
                 </>
               )}
             </div>
@@ -574,11 +731,12 @@ const PaymentGateway = ({ total, onSuccess, onCancel, onMethodSelect }) => {
               <label className="mb-2 block text-sm font-semibold text-gray-800">¿Cómo quieres pagar?</label>
               <div className="flex flex-wrap gap-2">
                 {[
-                  { id: "efectivo", label: "Efectivo" },
-                  { id: "yape", label: "Yape" },
-                  { id: "tarjeta", label: "Tarjeta" },
+                  { id: "efectivo", label: "Efectivo", needsMp: false },
+                  { id: "yape", label: "Yape", needsMp: true },
+                  { id: "tarjeta", label: "Tarjeta", needsMp: true },
                 ].map((m) => (
-                  <button key={m.id} type="button" onClick={() => handleMethodChange(m.id)} disabled={busy}
+                  <button key={m.id} type="button" onClick={() => handleMethodChange(m.id)}
+                    disabled={busy || (m.needsMp && !mpEnabled)}
                     className={`rounded-full px-4 py-2 text-sm font-semibold transition ${paymentMethod === m.id ? "bg-gray-900 text-white shadow" : "bg-gray-100 text-gray-600 hover:bg-gray-200"} disabled:opacity-50`}>
                     {m.label}
                   </button>

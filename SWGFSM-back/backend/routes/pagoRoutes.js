@@ -2,30 +2,37 @@ const express = require("express");
 const router = express.Router();
 const { MercadoPagoConfig, Payment } = require("mercadopago");
 
-const client = new MercadoPagoConfig({
-  accessToken: process.env.ACCESS_TOKEN,
-});
+const getMpAccessToken = () =>
+  String(
+    process.env.MERCADOPAGO_ACCESS_TOKEN ||
+      process.env.ACCESS_TOKEN ||
+      "",
+  ).trim();
 
-// Verificar métodos de pago al iniciar
-async function logPaymentMethods() {
-  try {
-    const response = await fetch(
-      "https://api.mercadopago.com/v1/payment_methods",
-      {
-        headers: {
-          Authorization: `Bearer ${process.env.ACCESS_TOKEN}`, // ← Usa la variable directamente
-        },
-      },
-    );
-    const data = await response.json();
-    console.log(data);
-  } catch (error) {
-    console.error("Error obteniendo métodos de pago:", error);
-  }
+const mpAccessToken = getMpAccessToken();
+const mpConfigured = mpAccessToken.length > 0;
+
+const client = mpConfigured
+  ? new MercadoPagoConfig({ accessToken: mpAccessToken })
+  : null;
+
+if (!mpConfigured) {
+  console.warn(
+    "[pagos] Mercado Pago sin configurar. Agrega MERCADOPAGO_ACCESS_TOKEN o ACCESS_TOKEN en backend/.env",
+  );
 }
-logPaymentMethods();
 
-router.post("/create_preference", async (req, res) => {
+const requireMpConfigured = (_req, res, next) => {
+  if (!mpConfigured || !client) {
+    return res.status(503).json({
+      message:
+        "Mercado Pago no está configurado en el servidor. Contacta al administrador.",
+    });
+  }
+  next();
+};
+
+router.post("/create_preference", requireMpConfigured, async (req, res) => {
   const {
     token,
     issuer_id,
@@ -36,7 +43,6 @@ router.post("/create_preference", async (req, res) => {
     payer,
   } = req.body;
 
-  // Validación básica (payment_method_id es opcional si hay token — MP lo infiere del BIN)
   if (!token || !transaction_amount || !payer?.email) {
     return res.status(400).json({
       message:
@@ -75,10 +81,11 @@ router.post("/create_preference", async (req, res) => {
     console.error("message:", error?.message);
     console.error("status:", error?.status || error?.statusCode);
     console.error("cause:", JSON.stringify(error?.cause, null, 2));
-    console.error("error body:", JSON.stringify(error, null, 2));
-    console.error("═══════════════════════════════");
     res.status(500).json({
-      message: error?.cause?.[0]?.description || error?.message || "Error al procesar el pago.",
+      message:
+        error?.cause?.[0]?.description ||
+        error?.message ||
+        "Error al procesar el pago.",
       mpError: {
         status: error?.status || error?.statusCode,
         cause: error?.cause,
@@ -88,16 +95,17 @@ router.post("/create_preference", async (req, res) => {
   }
 });
 
-// Obtener bancos emisores según BIN (proxy — el frontend no tiene access token)
-router.get("/issuers", async (req, res) => {
+router.get("/issuers", requireMpConfigured, async (req, res) => {
   const { payment_method_id, bin } = req.query;
   if (!payment_method_id || !bin || bin.length < 6) {
-    return res.status(400).json({ message: "Faltan payment_method_id o bin (mín. 6 dígitos)." });
+    return res
+      .status(400)
+      .json({ message: "Faltan payment_method_id o bin (mín. 6 dígitos)." });
   }
   try {
     const response = await fetch(
       `https://api.mercadopago.com/v1/payment_methods/card_issuers?payment_method_id=${payment_method_id}&bin=${bin}`,
-      { headers: { Authorization: `Bearer ${process.env.ACCESS_TOKEN}` } },
+      { headers: { Authorization: `Bearer ${mpAccessToken}` } },
     );
     const data = await response.json();
     res.json(data);
@@ -107,13 +115,13 @@ router.get("/issuers", async (req, res) => {
   }
 });
 
-// Yape: crear pago con token generado desde frontend vía mp.yape() (phone + OTP)
-router.post("/create_yape", async (req, res) => {
+router.post("/create_yape", requireMpConfigured, async (req, res) => {
   const { token, transaction_amount, description, payer } = req.body;
 
   if (!token || !transaction_amount || !payer?.email) {
     return res.status(400).json({
-      message: "Faltan datos requeridos: token, transaction_amount y email del pagador.",
+      message:
+        "Faltan datos requeridos: token, transaction_amount y email del pagador.",
     });
   }
 
@@ -139,24 +147,17 @@ router.post("/create_yape", async (req, res) => {
       status_detail: response.status_detail,
     });
   } catch (error) {
-    console.error("═══ ERROR YAPE ═══");
-    console.error("message:", error?.message);
-    console.error("status:", error?.status || error?.statusCode);
-    console.error("cause:", JSON.stringify(error?.cause, null, 2));
-    console.error("═══════════════");
+    console.error("═══ ERROR YAPE ═══", error);
     res.status(500).json({
-      message: error?.cause?.[0]?.description || error?.message || "Error al procesar el pago Yape.",
-      mpError: {
-        status: error?.status || error?.statusCode,
-        cause: error?.cause,
-        message: error?.message,
-      },
+      message:
+        error?.cause?.[0]?.description ||
+        error?.message ||
+        "Error al procesar el pago Yape.",
     });
   }
 });
 
-// Yape: consultar estado del pago
-router.post("/yape_status", async (req, res) => {
+router.post("/yape_status", requireMpConfigured, async (req, res) => {
   const { payment_id } = req.body;
 
   if (!payment_id) {
@@ -175,7 +176,10 @@ router.post("/yape_status", async (req, res) => {
   } catch (error) {
     console.error("═══ ERROR YAPE STATUS ═══", error);
     res.status(500).json({
-      message: error?.cause?.[0]?.description || error?.message || "Error al consultar el pago.",
+      message:
+        error?.cause?.[0]?.description ||
+        error?.message ||
+        "Error al consultar el pago.",
     });
   }
 });
@@ -183,8 +187,6 @@ router.post("/yape_status", async (req, res) => {
 router.post("/pago-simulado", async (req, res) => {
   const { method, total, tipoEntrega, estacionMetropolitanoNombre } = req.body;
 
-  // Acá podés guardar en DB la intención de pago
-  // Por ahora devuelve una respuesta simulada exitosa
   try {
     const operationId = `SIM-${Date.now()}`;
     res.json({
