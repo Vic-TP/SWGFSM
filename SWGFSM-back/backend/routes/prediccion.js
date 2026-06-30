@@ -54,9 +54,16 @@ router.get("/resumen", async (req, res) => {
     ).length;
     const totalSazonML = datos.filter(p => p.estadoML === "sazon").length;
 
-    // ── Días promedio de almacén ─────────────────────────────────────────────
-    const diasProm = datos.length
-      ? (datos.reduce((s, p) => s + (p.diasAlmacen ?? 0), 0) / datos.length).toFixed(1)
+    // ── Días promedio de almacén — PONDERADO POR KG ──────────────────────────
+    // Un sub-lote de 500 kg con 9 días pesa más en el promedio que uno de
+    // 5 kg con 2 días. Antes se promediaba por documento, lo que distorsiona
+    // el número cuando los rangos por variedad son muy distintos entre sí.
+    const kgTotalParaProm = datos.reduce((s, p) => s + (p.cantidad ?? 0), 0);
+    const diasProm = kgTotalParaProm > 0
+      ? (
+          datos.reduce((s, p) => s + (p.diasAlmacen ?? 0) * (p.cantidad ?? 0), 0) /
+          kgTotalParaProm
+        ).toFixed(1)
       : "0";
 
     // ── Confianza media ──────────────────────────────────────────────────────

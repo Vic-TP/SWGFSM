@@ -12,8 +12,21 @@ const EstacionMetropolitano = require('../models/EstacionMetropolitano');
 const { encontrarProductoCatalogoPorVariedad } = require('../utils/catalogoProducto');
 const { calcularDescuentoOnline, roundMoney } = require('../utils/descuentoOnline');
 const nodemailer = require('nodemailer');
+const { actualizarPredicciones } = require('../ml/trainer');
 
 const router = express.Router();
+
+/**
+ * Dispara la actualización de predicciones ML sin bloquear la respuesta al
+ * cliente (fire-and-forget). actualizarPredicciones() ya trae su propio
+ * throttle de 10s, así que es seguro llamarla después de cada movimiento
+ * de stock sin preocuparse por recalcular en exceso.
+ */
+const dispararActualizacionML = () => {
+  actualizarPredicciones().catch((e) =>
+    console.error('[ML] Error actualizando predicciones tras venta:', e)
+  );
+};
 
 /** Stock vendible (kg): suma madura/verde/sazón; si todo es 0, legacy `stockSemanal` */
 const stockDisponibleProducto = (p) => {
@@ -976,7 +989,10 @@ router.post('/', async (req, res) => {
     guardada.stockMovimientos = aplicados;
     guardada.stockDescontado = true;
     await guardada.save();
-    
+
+    // El stock real cambió: refrescar predicciones ML (no bloquea la respuesta)
+    dispararActualizacionML();
+
     console.log('✅ Venta guardada exitosamente:', guardada.numeroVenta);
     res.status(201).json(guardada);
   } catch (err) {
@@ -1024,6 +1040,7 @@ router.put('/:id/estado', async (req, res) => {
 
     const antesDescuenta = estadoDescuentaInventario(anterior);
     const nuevoDescuenta = estadoDescuentaInventario(nuevo);
+    let huboCambioStock = false;
 
     // Pasar a Cancelado: devolver stock al inventario (colección producto)
     if (antesDescuenta && !nuevoDescuenta) {
@@ -1038,6 +1055,7 @@ router.put('/:id/estado', async (req, res) => {
         }
         venta.stockDescontado = false;
         venta.stockMovimientos = [];
+        huboCambioStock = true;
       }
     }
 
@@ -1071,11 +1089,16 @@ router.put('/:id/estado', async (req, res) => {
         }
         venta.stockMovimientos = aplicados;
         venta.stockDescontado = true;
+        huboCambioStock = true;
       }
     }
 
     venta.estado = nuevo;
     await venta.save();
+
+    // El stock real cambió (revertido o descontado): refrescar predicciones ML
+    if (huboCambioStock) dispararActualizacionML();
+
     res.json(venta);
   } catch (err) {
     console.error(err);
@@ -1089,7 +1112,8 @@ router.delete('/:id', async (req, res) => {
     const venta = await Venta.findById(req.params.id);
     if (!venta) return res.status(404).json({ message: 'Venta no encontrada' });
 
-    if (debeRevertirStock(venta)) {
+    const revertir = debeRevertirStock(venta);
+    if (revertir) {
       const movs = Array.isArray(venta.stockMovimientos) ? venta.stockMovimientos : [];
       if (movs.length > 0) {
         for (const m of movs) {
@@ -1101,6 +1125,9 @@ router.delete('/:id', async (req, res) => {
     }
 
     await Venta.findByIdAndDelete(req.params.id);
+
+    if (revertir) dispararActualizacionML();
+
     res.json({ message: 'Venta eliminada' });
   } catch (err) {
     console.error(err);

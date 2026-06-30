@@ -1,5 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
-import PrediccionChartsPanel from "./PrediccionCharts";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 
 // ═══════════════════════════════════════════════════════════════════════════════
 //  UMBRALES — espejo exacto del trainer.js
@@ -28,12 +27,12 @@ const estimatePh = (dias, tamano, tipo) => {
 //  CONSTANTES
 // ═══════════════════════════════════════════════════════════════════════════════
 const ESTADO_LABELS = ["verde", "sazon", "maduro", "punto_negro"];
-const ACCIONES_MAP = ["En proceso", "Almacenar", "Vender hoy", "Venta urgente"];
+const ACCIONES_MAP  = ["En proceso", "Almacenar", "Vender hoy", "Venta urgente"];
 const ESTADO_CONFIG = {
-  maduro: { label: "Maduro", bg: "bg-yellow-100", text: "text-yellow-800" },
-  punto_negro: { label: "Punto negro", bg: "bg-red-100", text: "text-red-800" },
-  sazon: { label: "Sazón", bg: "bg-emerald-100", text: "text-emerald-800" },
-  verde: { label: "Verde", bg: "bg-sky-100", text: "text-sky-800" },
+  maduro:      { label: "Maduro",      bg: "bg-yellow-100",  text: "text-yellow-800"  },
+  punto_negro: { label: "Punto negro", bg: "bg-red-100",     text: "text-red-800"     },
+  sazon:       { label: "Sazón",       bg: "bg-emerald-100", text: "text-emerald-800" },
+  verde:       { label: "Verde",       bg: "bg-sky-100",     text: "text-sky-800"     },
 };
 const SUB_LOTE_CONFIG = {
   verde:       { label: "Verde",  bg: "bg-sky-50",     text: "text-sky-700",     icon: "🟢" },
@@ -43,44 +42,23 @@ const SUB_LOTE_CONFIG = {
 };
 const API = "http://localhost:5000/api/prediccion";
 
-const getAuthToken = () => {
-  return sessionStorage.getItem("auth_token");
-};
-
-const fetchWithAuth = async (url, options = {}) => {
-  const token = getAuthToken();
-  const headers = {
-    "Content-Type": "application/json",
-    ...options.headers,
-  };
-
-  if (token) {
-    headers["Authorization"] = `Bearer ${token}`;
-  }
-
-  return fetch(url, {
-    ...options,
-    headers,
-  });
-};
-
 // ═══════════════════════════════════════════════════════════════════════════════
 //  HOOK
 // ═══════════════════════════════════════════════════════════════════════════════
 const useInventarioML = () => {
-  const [data, setData] = useState([]);
-  const [resumen, setResumen] = useState(null);
+  const [data,        setData]        = useState([]);
+  const [resumen,     setResumen]     = useState(null);
   const [historialDB, setHistorialDB] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [loading,     setLoading]     = useState(true);
+  const [error,       setError]       = useState(null);
 
   const cargar = useCallback(async () => {
     setLoading(true);
     try {
       const [invRes, resRes, histRes] = await Promise.all([
-        fetchWithAuth(`${API}/inventario`).then((r) => r.json()),
-        fetchWithAuth(`${API}/resumen`).then((r) => r.json()),
-        fetchWithAuth(`${API}/historial`).then((r) => r.json()),
+        fetch(`${API}/inventario`).then(r => r.json()),
+        fetch(`${API}/resumen`).then(r => r.json()),
+        fetch(`${API}/historial`).then(r => r.json()),
       ]);
       if (invRes.ok) {
         const normSub = v => {
@@ -108,7 +86,7 @@ const useInventarioML = () => {
           accuracy:    typeof p.accuracy === "number" ? p.accuracy : null,
         })));
       }
-      if (resRes.ok) setResumen(resRes.data);
+      if (resRes.ok)  setResumen(resRes.data);
       if (histRes.ok) setHistorialDB(histRes.data);
     } catch(e) { setError(e.message); }
     finally    { setLoading(false); }
@@ -146,9 +124,7 @@ const playAlertSound = () => {
 //  MODAL ALERTA
 // ═══════════════════════════════════════════════════════════════════════════════
 const AlertModal = ({ predictions, onDismiss }) => {
-  const criticos = predictions.filter(
-    (p) => p.estadoML === "punto_negro" || p.estadoML === "maduro",
-  );
+  const criticos = predictions.filter(p => p.estadoML === "punto_negro" || p.estadoML === "maduro");
   if (!criticos.length) return null;
   const hayPN = criticos.some(p => p.estadoML === "punto_negro");
   return (
@@ -205,6 +181,18 @@ const AlertModal = ({ predictions, onDismiss }) => {
 // ═══════════════════════════════════════════════════════════════════════════════
 //  UI ATOMS
 // ═══════════════════════════════════════════════════════════════════════════════
+const useChartJs = () => {
+  const [ready, setReady] = useState(!!window.Chart);
+  useEffect(() => {
+    if (window.Chart) { setReady(true); return; }
+    const s = document.createElement("script");
+    s.src = "https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js";
+    s.onload = () => setReady(true);
+    document.head.appendChild(s);
+  }, []);
+  return ready;
+};
+
 const Badge = ({ estado }) => {
   const c = ESTADO_CONFIG[estado] ?? { label: estado, bg:"bg-gray-100", text:"text-gray-700" };
   return <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold ${c.bg} ${c.text}`}>{c.label}</span>;
@@ -243,6 +231,52 @@ const accionColor  = e => (e==="punto_negro"||e==="maduro") ? "text-red-600" : "
 const accionPrefix = e => (e==="punto_negro"||e==="maduro") ? "⚠ " : "✓ ";
 
 // ═══════════════════════════════════════════════════════════════════════════════
+//  CHART CANVASES
+// ═══════════════════════════════════════════════════════════════════════════════
+const useChart = (ref, config) => {
+  useEffect(() => {
+    if (!ref.current || !window.Chart) return;
+    const c = new window.Chart(ref.current, config);
+    return () => c.destroy();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+};
+const LineChartCanvas = ({ enRiesgo, enSazon }) => {
+  const ref = useRef(null);
+  const gen = (end, f) => Array.from({length:7},(_,i) => Math.max(0,Math.round(end*(0.4+(i/6)*0.6*f))));
+  useChart(ref, {
+    type:"line",
+    data:{
+      labels:["-6d","-5d","-4d","-3d","-2d","Ayer","Hoy"],
+      datasets:[
+        {label:"En riesgo",data:gen(enRiesgo,1),  borderColor:"#dc2626",backgroundColor:"rgba(220,38,38,.1)", tension:.4,fill:true,pointRadius:3},
+        {label:"En sazón", data:gen(enSazon,1.5), borderColor:"#15803d",backgroundColor:"rgba(21,128,61,.1)", tension:.4,fill:true,pointRadius:3},
+      ],
+    },
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:"top",labels:{font:{size:11},boxWidth:10,padding:8}}},scales:{y:{beginAtZero:true,ticks:{font:{size:10}}},x:{ticks:{font:{size:10}}}}},
+  });
+  return <canvas ref={ref}/>;
+};
+const DoughnutChartCanvas = ({ data }) => {
+  const ref = useRef(null);
+  useChart(ref,{
+    type:"doughnut",
+    data:{labels:["Punto negro","Maduro","Sazón","Verde"],datasets:[{data,backgroundColor:["#dc2626","#d97706","#15803d","#0284c7"],borderWidth:0}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:"right",labels:{font:{size:11},boxWidth:10,padding:8}}}},
+  });
+  return <canvas ref={ref}/>;
+};
+const BarChartCanvas = ({ labels, values }) => {
+  const ref = useRef(null);
+  useChart(ref,{
+    type:"bar",
+    data:{labels,datasets:[{label:"Kg en riesgo",data:values,backgroundColor:values.map(v=>v>0?"#dc2626":"#15803d"),borderRadius:4}]},
+    options:{responsive:true,maintainAspectRatio:false,indexAxis:"y",plugins:{legend:{display:false}},scales:{x:{beginAtZero:true,ticks:{font:{size:10}}},y:{ticks:{font:{size:11}}}}},
+  });
+  return <canvas ref={ref}/>;
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
 //  TABS
 // ═══════════════════════════════════════════════════════════════════════════════
 const TABS = [
@@ -254,13 +288,14 @@ const TABS = [
 ];
 
 // ═══════════════════════════════════════════════════════════════════════════════
-//  COMPONENTE PRINCIPAL  
+//  COMPONENTE PRINCIPAL
 // ═══════════════════════════════════════════════════════════════════════════════
 const Prediccion = () => {
   const [tab,            setTab]            = useState("resumen");
   const [filtro,         setFiltro]         = useState("todos");
   const [showAlert,      setShowAlert]      = useState(false);
   const [alertDismissed, setAlertDismissed] = useState(false);
+  const chartReady = useChartJs();
 
   const { data:inventarioDB, resumen, historialDB, loading:dbLoading, error:dbError, recargar } = useInventarioML();
   
@@ -282,7 +317,7 @@ const Prediccion = () => {
   const isTipoAbierto = (tipo) => tiposAbiertos[tipo] === true;
 
   const reentrenarBackend = useCallback(async () => {
-    try { await fetchWithAuth(`${API}/reentrenar`,{method:"POST"}); setTimeout(()=>recargar(),30000); }
+    try { await fetch(`${API}/reentrenar`,{method:"POST"}); setTimeout(()=>recargar(),30000); }
     catch(e){ console.error(e); }
   }, [recargar]);
 
@@ -290,12 +325,15 @@ const Prediccion = () => {
   const totalKg     = resumen?.totalKg     ?? predictions.reduce((s,p)=>s+(p.cant??0),0);
   const totalRiesgo = resumen?.totalRiesgo ?? predictions.filter(p=>p.estadoML==="punto_negro"||p.estadoML==="maduro").length;
   const totalSazon  = resumen?.totalSazonML?? predictions.filter(p=>p.estadoML==="sazon").length;
-  const diasProm    = resumen?.diasProm    ?? (predictions.length ? (predictions.reduce((s,p)=>s+(p.diasAlmacen??0),0)/predictions.length).toFixed(1) : "—");
+  const diasProm    = resumen?.diasProm    ?? (predictions.length
+    ? (predictions.reduce((s,p)=>s+(p.diasAlmacen??0)*(p.cant??0),0) / Math.max(predictions.reduce((s,p)=>s+(p.cant??0),0),1)).toFixed(1)
+    : "—");
   const avgConf     = resumen?.avgConf     ?? (predictions.length ? Math.round((predictions.reduce((s,p)=>s+(p.confianza??0),0)/predictions.length)*100) : null);
   const _accRaw     = resumen?.accuracy    ?? predictions.find(p=>typeof p.accuracy==="number"&&p.accuracy>0)?.accuracy ?? null;
   const accuracy    = typeof _accRaw === "number" ? _accRaw : null;
 
   const countByEstado = est => predictions.filter(p=>p.estadoML===est).reduce((s,p)=>s+(p.cant??0),0);
+  const doughnutData  = ["punto_negro","maduro","sazon","verde"].map(countByEstado);
 
   const productosAgrupados = Object.values(
     predictions.reduce((acc,p)=>{
@@ -326,6 +364,8 @@ const Prediccion = () => {
     const cal    = mlStatus!=="ready" ? null : riesgo===0 ? "Excelente" : riesgo<total*0.3 ? "Bueno" : "Regular";
     return {nombre:prod,unidades:total,riesgo,cal};
   });
+  const barLabels = CALIFICACIONES.map(p=>p.nombre);
+  const barValues = CALIFICACIONES.map(p=>mlStatus==="ready"?p.riesgo:0);
 
   useEffect(()=>{
     if(mlStatus!=="ready"||alertDismissed) return;
@@ -392,7 +432,54 @@ const Prediccion = () => {
             {/* ══ RESUMEN ═════════════════════════════════════════════════════ */}
             {tab === "resumen" && (
               <div className="space-y-6">
-                {/* ... (Tus métricas se quedan igual) ... */}
+                {/* Tarjetas de métricas — versión "inteligente": cambian de color/mensaje según el estado real */}
+                {mlStatus === "training" && (
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                    {[1,2,3,4].map(i=>(
+                      <div key={i} className="bg-lime-50 rounded-xl border border-lime-100 p-4">
+                        <Skel className="h-3 w-20 mb-2"/>
+                        <Skel className="h-7 w-16"/>
+                        <Skel className="h-3 w-24 mt-2"/>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {mlStatus === "ready" && (
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                    {/* Stock total */}
+                    <div className="bg-lime-50 rounded-xl border border-lime-100 p-4">
+                      <p className="text-xs text-gray-500 mb-1">Stock total</p>
+                      <p className="text-2xl font-bold text-gray-800">{totalKg.toLocaleString("es-PE")} kg</p>
+                      <p className="text-[11px] text-gray-400 mt-1">{predictions.length} sub-lote{predictions.length!==1?"s":""}</p>
+                    </div>
+
+                    {/* Lotes en riesgo — rojo si hay, verde "todo en orden" si no */}
+                    <div className={`rounded-xl border p-4 ${totalRiesgo>0?"bg-red-50 border-red-100":"bg-emerald-50 border-emerald-100"}`}>
+                      <p className={`text-xs mb-1 ${totalRiesgo>0?"text-red-600":"text-emerald-700"}`}>Lotes en riesgo</p>
+                      <p className={`text-2xl font-bold ${totalRiesgo>0?"text-red-600":"text-emerald-700"}`}>{totalRiesgo}</p>
+                      <p className={`text-[11px] mt-1 ${totalRiesgo>0?"text-red-500":"text-emerald-600"}`}>
+                        {totalRiesgo>0 ? "⚠ Punto negro + maduro" : "✓ Todo en orden"}
+                      </p>
+                    </div>
+
+                    {/* En sazón */}
+                    <div className={`rounded-xl border p-4 ${totalSazon>0?"bg-emerald-50 border-emerald-100":"bg-gray-50 border-gray-100"}`}>
+                      <p className="text-xs mb-1 text-gray-600">En sazón</p>
+                      <p className={`text-2xl font-bold ${totalSazon>0?"text-emerald-700":"text-gray-400"}`}>{totalSazon}</p>
+                      <p className="text-[11px] mt-1 text-gray-500">
+                        {totalSazon>0 ? "Listos para vender pronto" : "Sin lotes en sazón"}
+                      </p>
+                    </div>
+
+                    {/* Días promedio — ponderado por kg, no calculado desde fechas */}
+                    <div className="bg-lime-50 rounded-xl border border-lime-100 p-4">
+                      <p className="text-xs text-gray-500 mb-1">Días prom.</p>
+                      <p className="text-2xl font-bold text-sky-700">{diasProm}d</p>
+                      <p className="text-[11px] text-gray-400 mt-1">Ponderado por kg · modelo ML</p>
+                    </div>
+                  </div>
+                )}
 
                 <div className="grid lg:grid-cols-2 gap-6">
                   {/* Tabla predicciones */}
@@ -452,7 +539,7 @@ const Prediccion = () => {
                                   .sort((a, b) => ESTADO_LABELS.indexOf(a.estadoML) - ESTADO_LABELS.indexOf(b.estadoML))
                                   .map((p, i) => (
                                     <tr key={i} className={`border-t border-gray-100 hover:bg-lime-50 ${p.estadoML === "punto_negro" ? "bg-red-50/30" : p.estadoML === "maduro" ? "bg-yellow-50/30" : ""}`}>
-                                      <td className="px-4 py-2 pl-8 truncate"><span className="text-[11px] text-gray-600">{p.cant} kg {p.tamano ? `· ${p.tamano}` : ""}</span></td>
+                                      <td className="px-4 py-2 pl-8 truncate"><span className="text-[11px] text-gray-600">{p.cant} kg {p.tamano ? `· ${p.tamano}` : ""}{p.proveedor && p.proveedor !== "—" ? ` · ${p.proveedor}` : ""}</span></td>
                                       <td className={`px-4 py-2 text-xs font-semibold ${diasColor(p.diasAlmacen)}`}>{p.diasAlmacen}d</td>
                                       <td className="px-4 py-2"><Badge estado={p.estadoML} /></td>
                                       <td className="px-4 py-2"><ConfidencePill value={p.confianza} /></td>
@@ -671,12 +758,31 @@ const Prediccion = () => {
                   </div>
                 )}
 
-                <PrediccionChartsPanel
-                  predictions={predictions}
-                  loading={mlStatus !== "ready"}
-                  showExplanations={false}
-                  showSectionHeader={false}
-                />
+                {chartReady ? (
+                  <div className="space-y-4">
+                    <div className="grid lg:grid-cols-2 gap-4">
+                      <div className="rounded-xl border border-gray-200 p-4">
+                        <p className="text-xs font-semibold text-gray-700 mb-1">Evolución estimada — 7 días</p>
+                        <p className="text-[10px] text-gray-400 mb-3">Proyección basada en estado ML actual</p>
+                        {mlStatus==="ready"
+                          ?<div className="relative h-44"><LineChartCanvas key={`l-${totalRiesgo}-${totalSazon}`} enRiesgo={predictions.filter(p=>p.estadoML==="punto_negro"||p.estadoML==="maduro").reduce((s,p)=>s+(p.cant??0),0)} enSazon={predictions.filter(p=>p.estadoML==="sazon").reduce((s,p)=>s+(p.cant??0),0)}/></div>
+                          :<ChartSkeleton/>}
+                      </div>
+                      <div className="rounded-xl border border-gray-200 p-4">
+                        <p className="text-xs font-semibold text-gray-700 mb-3">Distribución por estado ML — kg</p>
+                        {mlStatus==="ready"
+                          ?<div className="relative h-44"><DoughnutChartCanvas key={`d-${doughnutData.join("-")}`} data={doughnutData}/></div>
+                          :<ChartSkeleton/>}
+                      </div>
+                    </div>
+                    <div className="rounded-xl border border-gray-200 p-4">
+                      <p className="text-xs font-semibold text-gray-700 mb-3">Kg en riesgo por tipo de palta (ML)</p>
+                      {mlStatus==="ready"
+                        ?<div className="relative h-36"><BarChartCanvas key={`b-${barValues.join("-")}`} labels={barLabels} values={barValues}/></div>
+                        :<ChartSkeleton h="h-36"/>}
+                    </div>
+                  </div>
+                ) : <div className="space-y-4"><ChartSkeleton/><ChartSkeleton h="h-36"/></div>}
               </div>
             )}
 
@@ -725,16 +831,6 @@ const Prediccion = () => {
                           {[1,2,3,4,5,6,7,8,9].map(j=><td key={j} className="px-4 py-2"><Skel className="h-4 w-full"/></td>)}
                         </tr>
                       ))}
-                      {mlStatus === "training" &&
-                        [1, 2, 3].map((i) => (
-                          <tr key={i} className="border-t border-lime-100">
-                            {[1, 2, 3, 4, 5, 6, 7, 8].map((j) => (
-                              <td key={j} className="px-4 py-2.5">
-                                <Skel className="h-4 w-full" />
-                              </td>
-                            ))}
-                          </tr>
-                        ))}
                     </tbody>
                   </table>
                 </div>
@@ -831,6 +927,7 @@ const Prediccion = () => {
                 </div>
               </div>
             )}
+
           </div>
         </div>
       </section>

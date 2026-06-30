@@ -400,15 +400,38 @@ const predecirSubLote = (diasRef, tamano, tipo) => {
 //  el estado real de madurez de cada sub-lote con días representativos
 //  calculados según la variedad (TIPO_RANGES).
 // ═══════════════════════════════════════════════════════════════════════════════
-const predecirYGuardar = async () => {
+// ═══════════════════════════════════════════════════════════════════════════════
+//  PREDECIR TODOS LOS SUB-LOTES Y GUARDAR EN MONGODB  (protegido por mutex)
+//
+//  Lógica: todo stock entra como VERDE. Los tres campos del Producto
+//  (stockPaltaVerde, stockPaltaSazon, stockPaltaMadura) representan en qué
+//  etapa del ciclo se encuentran esas paltas actualmente. El modelo predice
+//  el estado real de madurez de cada sub-lote con días representativos
+//  calculados según la variedad (TIPO_RANGES).
+//
+//  ⚠ Mutex: esta función puede ser invocada desde DOS caminos distintos —
+//  el cron horario (vía entrenarModelo) y el hook de ventas (vía
+//  actualizarPredicciones). Como internamente hace deleteMany + insertMany
+//  sobre la misma colección, dos ejecuciones simultáneas podrían chocar
+//  (E11000 por el índice único de inventarioId, o una borrando lo que la
+//  otra insertó a medio camino). _prediciendoPromise serializa cualquier
+//  llamada concurrente: si ya hay una corriendo, todos los que llegan
+//  después simplemente esperan (y reciben) ese mismo resultado.
+// ═══════════════════════════════════════════════════════════════════════════════
+let _prediciendoPromise = null;
+
+const _predecirYGuardarImpl = async () => {
   if (!_modeloListo) return;
   try {
-    const productos  = await Producto.find({ estado: "ACTIVO" }).limit(100);
-    const resultados = [];
+    const productos    = await Producto.find({ estado: "ACTIVO" }).limit(100);
+    const resultados   = [];
+    const docsToInsert = [];
 
     for (const prod of productos) {
       const tamano = prod.tamano ?? "";
       const tipo   = prod.tipo   ?? "";
+      // Nombre real del proveedor si existe; categoriaId solo como último recurso
+      const proveedorNombre = prod.proveedor ?? prod.categoriaId ?? "—";
 
       // Solo se procesan sub-lotes con stock > 0
       const subLotes = [
@@ -425,29 +448,25 @@ const predecirYGuardar = async () => {
 
         const docId = `${prod._id}-${sl.key}`;
 
-        await PrediccionML.findOneAndUpdate(
-          { inventarioId: docId },
-          {
-            inventarioId:  docId,
-            productoId:    prod._id,
-            subLote:       sl.key,
-            fecha:         new Date(),
-            producto:      `${prod.nombre} ${tipo}`.trim(),
-            tipo,
-            tamano,
-            cantidad:      sl.stock,
-            stockSemanal:  prod.stockSemanal ?? 0,
-            proveedor:     prod.categoriaId  ?? "—",
-            diasAlmacen:   diasRef,
-            phEstimado:    pred.phEstimado,
-            estadoML:      pred.estadoML,
-            confianza:     pred.confianza,
-            accion:        pred.accion,
-            probs:         pred.probs,
-            accuracy:      ultimaAccuracy,
-          },
-          { upsert: true, new: true }
-        );
+        docsToInsert.push({
+          inventarioId:  docId,
+          productoId:    prod._id,
+          subLote:       sl.key,
+          fecha:         new Date(),
+          producto:      `${prod.nombre} ${tipo}`.trim(),
+          tipo,
+          tamano,
+          cantidad:      sl.stock,
+          stockSemanal:  prod.stockSemanal ?? 0,
+          proveedor:     proveedorNombre,
+          diasAlmacen:   diasRef,
+          phEstimado:    pred.phEstimado,
+          estadoML:      pred.estadoML,
+          confianza:     pred.confianza,
+          accion:        pred.accion,
+          probs:         pred.probs,
+          accuracy:      ultimaAccuracy,
+        });
 
         resultados.push({
           producto:    `${prod.nombre} ${tipo}`.trim(),
@@ -460,11 +479,52 @@ const predecirYGuardar = async () => {
       }
     }
 
+    // Reemplazo atómico: se borra el snapshot anterior completo y se inserta
+    // el nuevo de una sola vez. Evita findOneAndUpdate por documento (más
+    // lento) y elimina sub-lotes obsoletos de productos que ya no califican
+    // (p. ej. se desactivaron o se quedaron sin stock en esa etapa).
+    await PrediccionML.deleteMany({});
+    if (docsToInsert.length) {
+      await PrediccionML.insertMany(docsToInsert, { ordered: false });
+    }
+
     console.log(`[ML] ${resultados.length} predicciones guardadas ✓`);
     return resultados;
   } catch (err) {
     console.error("[ML] Error al predecir y guardar:", err);
   }
+};
+
+const predecirYGuardar = () => {
+  if (_prediciendoPromise) return _prediciendoPromise; // ya hay una corrida en curso: reutilizarla
+  _prediciendoPromise = _predecirYGuardarImpl().finally(() => {
+    _prediciendoPromise = null;
+  });
+  return _prediciendoPromise;
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  ACTUALIZACIÓN ACELERADA (THROTTLE)
+//
+//  Se llama desde ventasRoutes después de cada cambio de stock para que las
+//  predicciones reflejen el inventario real sin esperar al cron de la hora.
+//  Throttle de 10 s: si llegan varias ventas seguidas, no se recalcula en
+//  cada una. El mutex de predecirYGuardar ya protege contra solapamiento
+//  con el cron horario, así que aquí solo nos preocupa la frecuencia.
+// ═══════════════════════════════════════════════════════════════════════════════
+const THROTTLE_MS = 10 * 1000;
+let _ultimaActualizacion = 0;
+
+const actualizarPredicciones = () => {
+  if (!_modeloListo) return Promise.resolve(null);
+
+  const ahora = Date.now();
+  if (!_prediciendoPromise && ahora - _ultimaActualizacion < THROTTLE_MS) {
+    return Promise.resolve(null); // descartada por throttle
+  }
+
+  _ultimaActualizacion = ahora;
+  return predecirYGuardar();
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -473,6 +533,7 @@ const predecirYGuardar = async () => {
 module.exports = {
   entrenarModelo,
   predecirYGuardar,
+  actualizarPredicciones,
   modeloListo:  () => _modeloListo,
   getAccuracy:  () => ultimaAccuracy,
   getThresholds,
